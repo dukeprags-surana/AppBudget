@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <meta name="theme-color" content="#0B5FFF" />
-<title>Couples Money Tracker (Firebase Sync)</title>
+<title>Couples Money Tracker (Drive Sync)</title>
 <style>
   :root{
     --bg:#f4f6fb; --card:#ffffff; --text:#0b2140; --muted:#60708a;
@@ -44,6 +44,7 @@
     background:rgba(255,255,255,.16);
     border:1px solid rgba(255,255,255,.22);
     color:#fff;font-weight:800;font-size:13px;
+    cursor:pointer;
   }
   .tab.active{background:#fff;color:var(--accent);border-color:#fff}
   main{padding:12px;max-width:980px;margin:0 auto}
@@ -122,13 +123,14 @@
   .dotBad{background:var(--bad)}
   .dotWait{background:#f5b400}
 </style>
+<link rel="icon" href="data:,">
 </head>
 <body>
 <header>
   <div class="top">
     <div class="brand">
       <b>Couples Money Tracker</b>
-      <span>Offline-first • Firebase Sync (auto merge)</span>
+      <span>Offline-first • Google Drive Sync (Apps Script)</span>
     </div>
 
     <div class="pill" title="Select Month + Person">
@@ -286,7 +288,7 @@
 
       <div class="card" style="box-shadow:none">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-          <b>Firebase Sync</b>
+          <b>Google Drive Sync</b>
           <span class="muted">
             <span id="syncDot" class="statusDot dotWait"></span>
             <span id="syncStatusText">Not configured</span>
@@ -294,21 +296,13 @@
         </div>
 
         <div class="twoCols" style="margin-top:10px">
-          <div>
-            <label>Firebase API Key</label>
-            <input id="sFbApiKey" placeholder="AIza..." />
-          </div>
-          <div>
-            <label>Firebase Auth Domain</label>
-            <input id="sFbAuthDomain" placeholder="your-project.firebaseapp.com" />
-          </div>
-          <div>
-            <label>Firebase Project ID</label>
-            <input id="sFbProjectId" placeholder="your-project-id" />
+          <div style="grid-column:1/-1">
+            <label>Apps Script Web App URL</label>
+            <input id="sDriveUrl" placeholder="https://script.google.com/macros/s/....../exec" />
           </div>
           <div>
             <label>Sync Key (shared)</label>
-            <input id="sFbSyncKey" placeholder="Use a long random key both devices share" />
+            <input id="sDriveKey" placeholder="Same key on both devices" />
           </div>
         </div>
 
@@ -413,7 +407,7 @@
       </div>
 
       <div class="muted" style="margin-top:10px">
-        If you and your partner both configure the same Firebase config + Sync Key, it auto-merges.
+        Put the same Apps Script URL + Sync Key on both devices.
       </div>
     </aside>
   </div>
@@ -421,27 +415,16 @@
 
 <div id="toast" class="toast"></div>
 
-<!-- Firebase (modular SDK) -->
-<script type="module">
+<script>
 /* ==========================================================
-   Couples Money Tracker — Firebase Sync Edition (Single HTML)
+   Couples Money Tracker — Drive Sync Edition (Single HTML)
    - Offline-first local storage (IndexedDB fallback localStorage)
-   - Sync via Firebase:
-       - Anonymous Auth
-       - Firestore doc: couplesMoneyTracker/{syncKey}
-       - Pull+merge on open
-       - Push+merge after changes (debounced)
+   - Sync via Google Apps Script (Drive JSON)
+   - Pull+merge on open
+   - Push+merge after changes (debounced)
    ========================================================== */
 
-import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
-import {
-  getAuth, signInAnonymously
-} from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
-import {
-  getFirestore, doc, getDoc, setDoc, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
-
-const APP_KEY = "couples_money_tracker_firebase_v1";
+const APP_KEY = "couples_money_tracker_drive_v1";
 
 const DEFAULTS = {
   you: "You",
@@ -454,8 +437,8 @@ const DEFAULTS = {
     "Car (Insurance/Tax/Service)","Shopping","Subscriptions","Health","Phone/Internet",
     "Entertainment","Travel","Gifts","Debt repayment","Savings/Investing","Other"
   ],
-  // firebase sync config
-  fb: { apiKey:"", authDomain:"", projectId:"", syncKey:"" },
+  // drive sync config
+  drive: { url:"", key:"" },
   lastSync: 0,
   pendingLocal: 0,
   tx: [],
@@ -481,18 +464,15 @@ function toast(msg){
   clearTimeout(toast._tm);
   toast._tm = setTimeout(()=>t.classList.remove("show"), 1600);
 }
-
 function setSyncStatus(mode, text){
   const dot = $("syncDot");
   dot.classList.remove("dotOk","dotBad","dotWait");
   dot.classList.add(mode==="ok" ? "dotOk" : mode==="bad" ? "dotBad" : "dotWait");
   $("syncStatusText").textContent = text;
 }
-
 function fmtTime(ts){
   if(!ts) return "—";
-  try{ return new Date(ts).toLocaleString("en-GB",{hour12:false}); }
-  catch{ return "—"; }
+  try{ return new Date(ts).toLocaleString("en-GB",{hour12:false}); } catch { return "—"; }
 }
 
 /* ---------- Storage layer (IndexedDB + fallback) ---------- */
@@ -635,7 +615,6 @@ function fillDropdowns(){
   $("p1Name").textContent = state.you;
   $("p2Name").textContent = state.partner;
 }
-
 function refreshCategoryDropdown(){
   const type = $("fType").value;
   const cat = $("fCategory");
@@ -661,18 +640,15 @@ function getFilteredTx({month=state.selectedMonth, person=state.personFilter, ty
     return true;
   }).sort((a,b)=> (b.date||"").localeCompare(a.date||""));
 }
-
 function sumBy(list, pred){
   return list.reduce((acc,t)=> acc + (pred(t) ? Number(t.amount||0) : 0), 0);
 }
-
 function monthTotals(month=state.selectedMonth){
   const tx = state.tx.filter(t=>t.month===month);
   const income = sumBy(tx, t=>t.type==="income");
   const expense = sumBy(tx, t=>t.type==="expense");
   return {income, expense, net: income-expense};
 }
-
 function personTotals(month=state.selectedMonth){
   const tx = state.tx.filter(t=>t.month===month);
   const out = {};
@@ -686,7 +662,6 @@ function personTotals(month=state.selectedMonth){
   }
   return out;
 }
-
 function topExpenseCats(month=state.selectedMonth){
   const tx = state.tx.filter(t=>t.month===month && t.type==="expense");
   const map = new Map();
@@ -708,7 +683,6 @@ function renderQuick(){
   $("lastSync").textContent = fmtTime(state.lastSync);
   $("pendingCount").textContent = String(state.pendingLocal || 0);
 }
-
 function renderSummary(){
   const {income, expense, net} = monthTotals();
   $("kIncome").textContent = fmtGBP(income);
@@ -757,7 +731,6 @@ function renderSummary(){
     }
   }
 }
-
 function renderTransactions(){
   const tx = getFilteredTx();
   const wrap = $("txList");
@@ -832,12 +805,9 @@ function renderTransactions(){
     });
   });
 }
-
 function renderSettingsPanel(){
-  $("sFbApiKey").value = state.fb?.apiKey || "";
-  $("sFbAuthDomain").value = state.fb?.authDomain || "";
-  $("sFbProjectId").value = state.fb?.projectId || "";
-  $("sFbSyncKey").value = state.fb?.syncKey || "";
+  $("sDriveUrl").value = state.drive?.url || "";
+  $("sDriveKey").value = state.drive?.key || "";
 
   $("sYou").value = state.you;
   $("sPartner").value = state.partner;
@@ -849,10 +819,8 @@ function renderSettingsPanel(){
   $("lastSync").textContent = fmtTime(state.lastSync);
   $("pendingCount").textContent = String(state.pendingLocal || 0);
 
-  if(!isFirebaseConfigured()) setSyncStatus("wait","Not configured");
+  if(!isDriveConfigured()) setSyncStatus("wait","Not configured");
 }
-
-/* ---------- HTML helpers ---------- */
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, m=>({
     "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
@@ -908,7 +876,6 @@ async function addOrUpdate(){
   clearForm(false);
   renderQuick();
 }
-
 function clearForm(resetEdit=true){
   $("fDate").value = new Date().toISOString().slice(0,10);
   $("fType").value = "expense";
@@ -933,7 +900,6 @@ function download(filename, text, mime="text/plain"){
   a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
 }
-
 function exportCSV(){
   const tx = getFilteredTx({type:"all",cat:"all"});
   const rows = [["Date","Month","Type","Category","Amount","PaidBy","Account","Note","UpdatedAt"]];
@@ -948,7 +914,6 @@ function exportCSV(){
   download(`transactions_${state.selectedMonth}.csv`, csv, "text/csv");
   toast("CSV exported");
 }
-
 function exportJSON(){
   const pack = {
     version: 1,
@@ -959,7 +924,6 @@ function exportJSON(){
   download(`money_backup_${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(pack,null,2), "application/json");
   toast("JSON exported");
 }
-
 async function importJSONFile(file){
   const text = await file.text();
   let pack;
@@ -984,7 +948,6 @@ async function importJSONFile(file){
   await syncPushIfConfigured();
   toast("Imported & merged");
 }
-
 function mergeList(a,b){
   const out = [...(a||[])];
   for(const x of (b||[])){
@@ -993,44 +956,24 @@ function mergeList(a,b){
   return out;
 }
 
-/* ---------- Firebase Sync ---------- */
-let fbApp=null, fbAuth=null, fbDb=null, fbReady=false;
-const COLLECTION = "couplesMoneyTracker";
-
-function isFirebaseConfigured(){
-  const f = state.fb || {};
-  return String(f.apiKey||"").trim().length > 10 &&
-         String(f.authDomain||"").includes(".") &&
-         String(f.projectId||"").trim().length > 2 &&
-         String(f.syncKey||"").trim().length >= 10;
+/* ---------- Drive Sync ---------- */
+function isDriveConfigured(){
+  const d = state.drive || {};
+  return String(d.url||"").startsWith("https://") && String(d.key||"").trim().length >= 6;
 }
-
-async function ensureFirebase(){
-  if(!isFirebaseConfigured()) return false;
-  if(fbReady) return true;
-
-  const cfg = {
-    apiKey: state.fb.apiKey.trim(),
-    authDomain: state.fb.authDomain.trim(),
-    projectId: state.fb.projectId.trim()
+function buildSettings(){
+  return {
+    you: state.you,
+    partner: state.partner,
+    accounts: state.accounts,
+    incomeCats: state.incomeCats,
+    expenseCats: state.expenseCats,
+    paidBy: state.paidBy
   };
-
-  try{
-    if(!getApps().length) fbApp = initializeApp(cfg);
-    else fbApp = getApps()[0];
-
-    fbAuth = getAuth(fbApp);
-    await signInAnonymously(fbAuth);
-
-    fbDb = getFirestore(fbApp);
-    fbReady = true;
-    return true;
-  }catch(e){
-    fbReady = false;
-    throw e;
-  }
 }
-
+function markPendingChange(){
+  state.pendingLocal = (state.pendingLocal || 0) + 1;
+}
 function mergeTxKeepNewest(localTx, remoteTx){
   const map = new Map();
   for(const t of (localTx||[])) if(t && t.id) map.set(t.id, t);
@@ -1042,59 +985,88 @@ function mergeTxKeepNewest(localTx, remoteTx){
   return [...map.values()];
 }
 
-function buildSettings(){
-  return {
-    you: state.you,
-    partner: state.partner,
-    accounts: state.accounts,
-    incomeCats: state.incomeCats,
-    expenseCats: state.expenseCats,
-    paidBy: state.paidBy
-  };
+async function driveGet(){
+  const url = state.drive.url.trim();
+  const key = state.drive.key.trim();
+  const u = url + (url.includes("?") ? "&" : "?") + "key=" + encodeURIComponent(key);
+  const res = await fetch(u, { method:"GET", cache:"no-store" });
+  const json = await res.json();
+  if(!json.ok) throw new Error(json.error || "Drive GET failed");
+  return json.data || {};
+}
+async function drivePost(data){
+  const url = state.drive.url.trim();
+  const key = state.drive.key.trim();
+  const res = await fetch(url, {
+    method:"POST",
+    headers: { "Content-Type":"text/plain;charset=utf-8" },
+    body: JSON.stringify({ key, data })
+  });
+  const json = await res.json();
+  if(!json.ok) throw new Error(json.error || "Drive POST failed");
+  return json;
 }
 
-function markPendingChange(){
-  state.pendingLocal = (state.pendingLocal || 0) + 1;
+async function syncPullOnOpen(){
+  if(!isDriveConfigured()){ setSyncStatus("wait","Not configured"); return; }
+  try{
+    setSyncStatus("wait","Pulling latest…");
+    const remote = await driveGet();
+    const remoteTx = Array.isArray(remote.tx) ? remote.tx : [];
+    state.tx = mergeTxKeepNewest(state.tx, remoteTx);
+
+    const rs = remote.settings || {};
+    state.you = rs.you || state.you;
+    state.partner = rs.partner || state.partner;
+    state.accounts = mergeList(state.accounts, rs.accounts || []);
+    state.incomeCats = mergeList(state.incomeCats, rs.incomeCats || []);
+    state.expenseCats = mergeList(state.expenseCats, rs.expenseCats || []);
+    state.paidBy = mergeList(state.paidBy, rs.paidBy || []);
+
+    state.lastSync = Date.now();
+    await persist();
+
+    fillMonthPicker(); fillPersonPicker(); fillDropdowns();
+    renderQuick();
+    setSyncStatus("ok","Pulled & merged");
+  }catch(e){
+    console.error(e);
+    setSyncStatus("bad","Pull failed");
+  }
 }
 
-async function fbPullLatest(){
-  await ensureFirebase();
-  const key = state.fb.syncKey.trim();
-  const ref = doc(fbDb, COLLECTION, key);
-  const snap = await getDoc(ref);
-  if(!snap.exists()) return null;
-  return snap.data();
-}
-
-async function fbPushMerged(localData){
-  await ensureFirebase();
-  const key = state.fb.syncKey.trim();
-  const ref = doc(fbDb, COLLECTION, key);
-  await setDoc(ref, {
-    ...localData,
-    updatedAt: Date.now(),
-    serverUpdatedAt: serverTimestamp()
-  }, { merge: true });
-  const snap = await getDoc(ref);
-  return snap.exists() ? snap.data() : null;
-}
-
-let _syncTimer = null;
+let _syncTimer=null;
 async function syncPushIfConfigured(){
-  if(!isFirebaseConfigured()) return;
+  if(!isDriveConfigured()) return;
 
   clearTimeout(_syncTimer);
   return await new Promise((resolve)=>{
     _syncTimer = setTimeout(async ()=>{
       try{
         setSyncStatus("wait","Syncing…");
-        const merged = await fbPushMerged({ settings: buildSettings(), tx: state.tx });
 
-        if(merged && Array.isArray(merged.tx)){
-          state.tx = mergeTxKeepNewest(state.tx, merged.tx);
-        }
-        // merge settings (non-destructive)
-        const rs = merged?.settings || {};
+        // 1) pull remote, merge, 2) push merged back
+        const remote = await driveGet();
+        const remoteTx = Array.isArray(remote.tx) ? remote.tx : [];
+        const mergedTx = mergeTxKeepNewest(state.tx, remoteTx);
+
+        const remoteSettings = remote.settings || {};
+        const mergedSettings = {
+          ...remoteSettings,
+          ...buildSettings()
+        };
+
+        const payload = {
+          settings: mergedSettings,
+          tx: mergedTx,
+          updatedAt: Date.now()
+        };
+
+        await drivePost(payload);
+
+        // apply merged back locally
+        state.tx = mergedTx;
+        const rs = mergedSettings;
         state.you = rs.you || state.you;
         state.partner = rs.partner || state.partner;
         state.accounts = mergeList(state.accounts, rs.accounts || []);
@@ -1114,6 +1086,7 @@ async function syncPushIfConfigured(){
         setSyncStatus("ok","Synced");
         resolve(true);
       }catch(e){
+        console.error(e);
         await persist();
         setSyncStatus("bad","Sync failed");
         resolve(false);
@@ -1122,37 +1095,9 @@ async function syncPushIfConfigured(){
   });
 }
 
-async function syncPullOnOpen(){
-  if(!isFirebaseConfigured()) { setSyncStatus("wait","Not configured"); return; }
-  try{
-    setSyncStatus("wait","Pulling latest…");
-    const remote = await fbPullLatest();
-    if(remote && Array.isArray(remote.tx)){
-      state.tx = mergeTxKeepNewest(state.tx, remote.tx);
-    }
-
-    const rs = remote?.settings || {};
-    state.you = rs.you || state.you;
-    state.partner = rs.partner || state.partner;
-    state.accounts = mergeList(state.accounts, rs.accounts || []);
-    state.incomeCats = mergeList(state.incomeCats, rs.incomeCats || []);
-    state.expenseCats = mergeList(state.expenseCats, rs.expenseCats || []);
-    state.paidBy = mergeList(state.paidBy, rs.paidBy || []);
-
-    state.lastSync = Date.now();
-    await persist();
-
-    fillMonthPicker(); fillPersonPicker(); fillDropdowns();
-    renderQuick();
-    setSyncStatus("ok","Pulled & merged");
-  }catch(e){
-    setSyncStatus("bad","Pull failed");
-  }
-}
-
 async function syncNow(){
-  if(!isFirebaseConfigured()){
-    toast("Enter Firebase config + Sync Key");
+  if(!isDriveConfigured()){
+    toast("Enter Apps Script URL + Sync Key");
     setSyncStatus("wait","Not configured");
     return;
   }
@@ -1160,20 +1105,19 @@ async function syncNow(){
   if(state.pendingLocal > 0) await syncPushIfConfigured();
   toast("Sync done");
 }
-
 async function testConnection(){
-  if(!isFirebaseConfigured()){
-    toast("Enter Firebase config + Sync Key");
+  if(!isDriveConfigured()){
+    toast("Enter Apps Script URL + Sync Key");
     setSyncStatus("wait","Not configured");
     return;
   }
   try{
     setSyncStatus("wait","Testing…");
-    await ensureFirebase();
-    await fbPullLatest(); // ok even if empty
+    await driveGet(); // OK even if empty
     setSyncStatus("ok","Connection OK");
     toast("Connection OK");
   }catch(e){
+    console.error(e);
     setSyncStatus("bad","Connection failed");
     toast("Connection failed");
   }
@@ -1181,18 +1125,12 @@ async function testConnection(){
 
 /* ---------- Settings save/reset ---------- */
 function normalizeLines(s){
-  return String(s||"")
-    .split(/\r?\n/)
-    .map(x=>x.trim())
-    .filter(Boolean);
+  return String(s||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
 }
-
 async function saveSettings(){
-  state.fb = {
-    apiKey: $("sFbApiKey").value.trim(),
-    authDomain: $("sFbAuthDomain").value.trim(),
-    projectId: $("sFbProjectId").value.trim(),
-    syncKey: $("sFbSyncKey").value.trim()
+  state.drive = {
+    url: $("sDriveUrl").value.trim(),
+    key: $("sDriveKey").value.trim()
   };
 
   state.you = $("sYou").value.trim() || DEFAULTS.you;
@@ -1214,28 +1152,24 @@ async function saveSettings(){
   fillPersonPicker(); fillMonthPicker(); fillDropdowns();
   renderQuick(); renderTransactions(); renderSummary();
 
-  if(isFirebaseConfigured()){
+  if(isDriveConfigured()){
     setSyncStatus("wait","Configured");
     await syncPullOnOpen();
     await syncPushIfConfigured();
   } else {
     setSyncStatus("wait","Not configured");
   }
-
   toast("Saved");
 }
-
 async function resetAll(){
   if(!confirm("This will delete ALL transactions and settings on this device. Continue?")) return;
   state = structuredClone(DEFAULTS);
   state.selectedMonth = monthKey(new Date());
   state.personFilter = "all";
-  fbReady = false;
   await persist();
   hydrateUI();
   toast("Reset complete");
 }
-
 async function clearThisMonth(){
   if(!confirm(`Delete ALL transactions in ${state.selectedMonth}?`)) return;
   state.tx = state.tx.filter(t=>t.month !== state.selectedMonth);
@@ -1250,15 +1184,12 @@ async function clearThisMonth(){
 /* ---------- Demo seed ---------- */
 async function seedDemo(){
   const m = state.selectedMonth || monthKey(new Date());
-  const baseDate = m + "-05";
   const demo = [
-    {date: baseDate, type:"income", category: state.incomeCats[0]||"Salary", amount: 3200, paidBy:"you", account: state.accounts[0]||"Monzo", note:"Monthly salary"},
+    {date: m+"-05", type:"income", category: state.incomeCats[0]||"Salary", amount: 3200, paidBy:"you", account: state.accounts[0]||"Monzo", note:"Monthly salary"},
     {date: m+"-07", type:"income", category: state.incomeCats[2]||"Side income", amount: 420, paidBy:"partner", account: state.accounts[1]||"HSBC", note:"Side income"},
     {date: m+"-01", type:"expense", category: "Rent/Mortgage", amount: 1250, paidBy:"joint", account: state.accounts[0]||"Monzo", note:"Rent"},
     {date: m+"-10", type:"expense", category: "Groceries", amount: 96.40, paidBy:"you", account: state.accounts[0]||"Monzo", note:"Tesco"},
     {date: m+"-12", type:"expense", category: "Eating out", amount: 42.10, paidBy:"partner", account: state.accounts[1]||"HSBC", note:"Dinner"},
-    {date: m+"-14", type:"expense", category: "Transport (Fuel/Charging)", amount: 22.50, paidBy:"you", account: state.accounts[0]||"Monzo", note:"Charging"},
-    {date: m+"-18", type:"expense", category: "Subscriptions", amount: 18.99, paidBy:"joint", account: state.accounts[2]||"Credit Card", note:"Streaming"},
   ].map(x=>({id:uid(), month:monthKey(x.date), updatedAt:Date.now(), ...x}));
 
   state.tx.push(...demo);
@@ -1271,17 +1202,14 @@ async function seedDemo(){
 }
 
 /* ---------- Persist / Load ---------- */
-async function persist(){
-  await DB.set("state", state);
-}
-
+async function persist(){ await DB.set("state", state); }
 async function loadState(){
   const saved = await DB.get("state");
   if(saved && typeof saved === "object"){
     state = {
       ...structuredClone(DEFAULTS),
       ...saved,
-      fb: { ...(DEFAULTS.fb), ...(saved.fb || {}) },
+      drive: { ...(DEFAULTS.drive), ...(saved.drive || {}) },
       tx: Array.isArray(saved.tx) ? saved.tx : []
     };
   } else {
@@ -1296,20 +1224,15 @@ function hydrateUI(){
   fillMonthPicker();
   fillPersonPicker();
   fillDropdowns();
-
   clearForm(true);
   renderQuick();
-
-  if(isFirebaseConfigured()) setSyncStatus("wait","Configured");
+  if(isDriveConfigured()) setSyncStatus("wait","Configured");
   else setSyncStatus("wait","Not configured");
 }
 
 /* ---------- Events ---------- */
 function wire(){
-  document.querySelectorAll(".tab").forEach(b=>{
-    b.addEventListener("click", ()=>setTab(b.dataset.tab));
-  });
-
+  document.querySelectorAll(".tab").forEach(b=> b.addEventListener("click", ()=>setTab(b.dataset.tab)));
   $("jumpToTx").addEventListener("click",(e)=>{e.preventDefault(); setTab("transactions");});
 
   $("monthPick").addEventListener("change", async ()=>{
@@ -1359,13 +1282,15 @@ function wire(){
 
 /* ---------- Boot ---------- */
 (async function init(){
-  try{ await DB.init(); } catch(e){ /* ignore */ }
+  try{ await DB.init(); } catch(e){}
   await loadState();
   wire();
   hydrateUI();
 
+  // AUTO PULL ON OPEN
   await syncPullOnOpen();
 
+  // If you edited offline, push when online
   if(state.pendingLocal > 0) await syncPushIfConfigured();
 
   toast("Ready");
