@@ -1060,9 +1060,12 @@ async function syncPullOnOpen(){
   try{
     setSyncStatus("wait","Pulling latest…");
     const remote = await driveGet();
+
     const remoteTx = Array.isArray(remote.tx) ? remote.tx : [];
+    // Always merge; keep newest updatedAt per transaction
     state.tx = mergeTxKeepNewest(state.tx, remoteTx);
 
+    // merge settings (non-destructive)
     const rs = remote.settings || {};
     state.you = rs.you || state.you;
     state.partner = rs.partner || state.partner;
@@ -1075,14 +1078,18 @@ async function syncPullOnOpen(){
     await persist();
 
     fillMonthPicker(); fillPersonPicker(); fillDropdowns();
+
+    // Force visible UI to update immediately
     renderQuick();
+    if(!$("tab-transactions").classList.contains("hide")) renderTransactions();
+    if(!$("tab-summary").classList.contains("hide")) renderSummary();
+
     setSyncStatus("ok","Pulled & merged");
   }catch(e){
     console.error(e);
     setSyncStatus("bad","Pull failed");
   }
 }
-
 let _syncTimer=null;
 async function syncPushIfConfigured(){
   if(!isDriveConfigured()) return;
@@ -1335,4 +1342,5 @@ function wire(){
 </script>
 </body>
 </html>
+
 
