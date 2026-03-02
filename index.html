@@ -833,7 +833,6 @@ function renderSettingsPanel(){
   $("lastSync").textContent = fmtTime(state.lastSync);
   $("pendingCount").textContent = String(state.pendingLocal || 0);
 
-  // since it's hardcoded, it is configured
   setSyncStatus("wait","Configured (hardcoded)");
 }
 
@@ -917,7 +916,6 @@ function download(filename, text, mime="text/plain"){
   a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
 }
-
 function exportCSV(){
   const tx = getFilteredTx({type:"all",cat:"all"});
   const rows = [["Date","Month","Type","Category","Amount","PaidBy","Account","Note","UpdatedAt"]];
@@ -932,7 +930,6 @@ function exportCSV(){
   download(`transactions_${state.selectedMonth}.csv`, csv, "text/csv");
   toast("CSV exported");
 }
-
 function exportJSON(){
   const pack = {
     version: 1,
@@ -943,7 +940,6 @@ function exportJSON(){
   download(`money_backup_${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(pack,null,2), "application/json");
   toast("JSON exported");
 }
-
 async function importJSONFile(file){
   const text = await file.text();
   let pack;
@@ -962,13 +958,13 @@ async function importJSONFile(file){
 
   markPendingChange();
   await persist();
+  applySelectedMonthToLatestIfEmpty(); /* NEW */
   fillMonthPicker(); fillPersonPicker(); fillDropdowns();
   renderQuick(); renderTransactions(); renderSummary();
 
   await syncPushIfConfigured();
   toast("Imported & merged");
 }
-
 function mergeList(a,b){
   const out = [...(a||[])];
   for(const x of (b||[])){
@@ -982,7 +978,6 @@ function isDriveConfigured(){
   const d = state.drive || {};
   return String(d.url||"").startsWith("https://") && String(d.key||"").trim().length >= 6;
 }
-
 function buildSettings(){
   return {
     you: state.you,
@@ -993,11 +988,9 @@ function buildSettings(){
     paidBy: state.paidBy
   };
 }
-
 function markPendingChange(){
   state.pendingLocal = (state.pendingLocal || 0) + 1;
 }
-
 function mergeTxKeepNewest(localTx, remoteTx){
   const map = new Map();
   for(const t of (localTx||[])) if(t && t.id) map.set(t.id, t);
@@ -1009,9 +1002,28 @@ function mergeTxKeepNewest(localTx, remoteTx){
   return [...map.values()];
 }
 
+/* ===== NEW: ensure every tx has updatedAt so merge works reliably ===== */
+function ensureUpdatedAt_(){
+  let changed = false;
+  for(const t of (state.tx || [])){
+    if(t && t.id && !Number(t.updatedAt)){
+      t.updatedAt = Date.now();
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+/* ===== NEW: if current selectedMonth has no tx, jump to latest month with tx ===== */
+function applySelectedMonthToLatestIfEmpty(){
+  const hasSelected = state.tx.some(t => t && t.month === state.selectedMonth);
+  if(hasSelected) return;
+  const months = [...new Set(state.tx.map(t=>t && t.month).filter(Boolean))].sort();
+  if(months.length) state.selectedMonth = months[months.length-1];
+}
+
 /* ==========================================================
    JSONP (NO-CORS) SYNC IMPLEMENTATION
-   - Replaces fetch-based driveGet/drivePost
    ========================================================== */
 function jsonp(url){
   return new Promise((resolve, reject)=>{
@@ -1041,7 +1053,6 @@ async function drivePost(data){
   const url = state.drive.url.trim();
   const key = state.drive.key.trim();
 
-  // JSONP-friendly "post via get"
   const payloadObj = { key, data };
   const payload = encodeURIComponent(JSON.stringify(payloadObj));
   const u = url + (url.includes("?") ? "&" : "?") +
@@ -1062,8 +1073,10 @@ async function syncPullOnOpen(){
     const remote = await driveGet();
 
     const remoteTx = Array.isArray(remote.tx) ? remote.tx : [];
-    // Always merge; keep newest updatedAt per transaction
     state.tx = mergeTxKeepNewest(state.tx, remoteTx);
+
+    // NEW: ensure updatedAt exists after merge
+    if(ensureUpdatedAt_()) await persist();
 
     // merge settings (non-destructive)
     const rs = remote.settings || {};
@@ -1074,12 +1087,14 @@ async function syncPullOnOpen(){
     state.expenseCats = mergeList(state.expenseCats, rs.expenseCats || []);
     state.paidBy = mergeList(state.paidBy, rs.paidBy || []);
 
+    // NEW: if month filter hides remote tx, jump to latest month with data
+    applySelectedMonthToLatestIfEmpty();
+
     state.lastSync = Date.now();
     await persist();
 
     fillMonthPicker(); fillPersonPicker(); fillDropdowns();
 
-    // Force visible UI to update immediately
     renderQuick();
     if(!$("tab-transactions").classList.contains("hide")) renderTransactions();
     if(!$("tab-summary").classList.contains("hide")) renderSummary();
@@ -1090,6 +1105,7 @@ async function syncPullOnOpen(){
     setSyncStatus("bad","Pull failed");
   }
 }
+
 let _syncTimer=null;
 async function syncPushIfConfigured(){
   if(!isDriveConfigured()) return;
@@ -1115,6 +1131,9 @@ async function syncPushIfConfigured(){
         // apply merged back locally
         state.tx = mergedTx;
 
+        // NEW: ensure updatedAt exists after merge
+        ensureUpdatedAt_();
+
         // merge settings back
         const rs = mergedSettings;
         state.you = rs.you || state.you;
@@ -1123,6 +1142,9 @@ async function syncPushIfConfigured(){
         state.incomeCats = mergeList(state.incomeCats, rs.incomeCats || []);
         state.expenseCats = mergeList(state.expenseCats, rs.expenseCats || []);
         state.paidBy = mergeList(state.paidBy, rs.paidBy || []);
+
+        // NEW: if month filter hides remote tx, jump to latest month with data
+        applySelectedMonthToLatestIfEmpty();
 
         state.lastSync = Date.now();
         state.pendingLocal = 0;
@@ -1170,7 +1192,6 @@ function normalizeLines(s){
 }
 
 async function saveSettings(){
-  // DO NOT overwrite hardcoded drive config:
   state.drive = { url: HARD_DRIVE_URL, key: HARD_SYNC_KEY };
 
   state.you = $("sYou").value.trim() || DEFAULTS.you;
@@ -1202,7 +1223,6 @@ async function saveSettings(){
 async function resetAll(){
   if(!confirm("This will delete ALL transactions and settings on this device. Continue?")) return;
   state = structuredClone(DEFAULTS);
-  // ensure hardcoded config survives reset
   state.drive = { url: HARD_DRIVE_URL, key: HARD_SYNC_KEY };
   state.selectedMonth = monthKey(new Date());
   state.personFilter = "all";
@@ -1257,11 +1277,18 @@ async function loadState(){
   } else {
     state = structuredClone(DEFAULTS);
   }
+
   // enforce hardcoded config always
   state.drive = { url: HARD_DRIVE_URL, key: HARD_SYNC_KEY };
 
+  // NEW: make sure tx have updatedAt
+  ensureUpdatedAt_();
+
   if(!state.selectedMonth) state.selectedMonth = monthKey(new Date());
   if(!state.personFilter) state.personFilter = "all";
+
+  // NEW: if selectedMonth has no data, jump to latest with data
+  applySelectedMonthToLatestIfEmpty();
 }
 
 /* ---------- UI hydrate ---------- */
@@ -1342,6 +1369,3 @@ function wire(){
 </script>
 </body>
 </html>
-
-
-
