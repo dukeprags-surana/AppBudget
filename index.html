@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <meta name="theme-color" content="#0B5FFF" />
-<title>Couples Money Tracker (Drive Sync)</title>
+<title>Couples Money Tracker (Firebase Sync)</title>
 <style>
   :root{
     --bg:#f4f6fb; --card:#ffffff; --text:#0b2140; --muted:#60708a;
@@ -128,7 +128,7 @@
   <div class="top">
     <div class="brand">
       <b>Couples Money Tracker</b>
-      <span>Offline-first • Drive Sync (auto merge)</span>
+      <span>Offline-first • Firebase Sync (auto merge)</span>
     </div>
 
     <div class="pill" title="Select Month + Person">
@@ -286,7 +286,7 @@
 
       <div class="card" style="box-shadow:none">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-          <b>Google Drive Sync</b>
+          <b>Firebase Sync</b>
           <span class="muted">
             <span id="syncDot" class="statusDot dotWait"></span>
             <span id="syncStatusText">Not configured</span>
@@ -295,12 +295,20 @@
 
         <div class="twoCols" style="margin-top:10px">
           <div>
-            <label>Apps Script Web App URL</label>
-            <input id="sDriveUrl" placeholder="https://script.google.com/macros/s/XXXX/exec" />
+            <label>Firebase API Key</label>
+            <input id="sFbApiKey" placeholder="AIza..." />
           </div>
           <div>
-            <label>Sync Key</label>
-            <input id="sDriveKey" placeholder="Your secret sync key" />
+            <label>Firebase Auth Domain</label>
+            <input id="sFbAuthDomain" placeholder="your-project.firebaseapp.com" />
+          </div>
+          <div>
+            <label>Firebase Project ID</label>
+            <input id="sFbProjectId" placeholder="your-project-id" />
+          </div>
+          <div>
+            <label>Sync Key (shared)</label>
+            <input id="sFbSyncKey" placeholder="Use a long random key both devices share" />
           </div>
         </div>
 
@@ -394,7 +402,7 @@
       <div class="hr"></div>
 
       <div class="muted">
-        <b>Install:</b> open this HTML in Safari/Chrome → “Add to Home Screen”.
+        <b>Install:</b> open in Safari/Chrome → “Add to Home Screen”.
       </div>
 
       <div class="hr"></div>
@@ -405,7 +413,7 @@
       </div>
 
       <div class="muted" style="margin-top:10px">
-        If you and your partner both configure the same Drive URL + key, it auto-merges.
+        If you and your partner both configure the same Firebase config + Sync Key, it auto-merges.
       </div>
     </aside>
   </div>
@@ -413,21 +421,27 @@
 
 <div id="toast" class="toast"></div>
 
-<script>
+<!-- Firebase (modular SDK) -->
+<script type="module">
 /* ==========================================================
-   Couples Money Tracker — Drive Sync Edition (Single HTML)
+   Couples Money Tracker — Firebase Sync Edition (Single HTML)
    - Offline-first local storage (IndexedDB fallback localStorage)
-   - Google Drive sync via Apps Script Web App:
-       GET  ?key=SYNC_KEY   => returns canonical JSON
-       POST {key, data}     => merges and returns canonical JSON
-   - Auto-pull+merge on open, auto-push+merge after changes.
+   - Sync via Firebase:
+       - Anonymous Auth
+       - Firestore doc: couplesMoneyTracker/{syncKey}
+       - Pull+merge on open
+       - Push+merge after changes (debounced)
    ========================================================== */
 
-// If you want to hardcode, you can, but settings UI is easiest.
-// const DRIVE_SYNC_URL = "https://script.google.com/macros/s/AKfycbwMT7py_5sWNAmLdkRO9Jk2Y3u9koHin_rHZnywp0LmS9s5zxqTMSd8m7luRUHEybc4/exec";
-// const DRIVE_SYNC_KEY = "MOMOSVADAPAV";
+import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+import {
+  getAuth, signInAnonymously
+} from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
+import {
+  getFirestore, doc, getDoc, setDoc, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
-const APP_KEY = "couples_money_tracker_drive_v1";
+const APP_KEY = "couples_money_tracker_firebase_v1";
 
 const DEFAULTS = {
   you: "You",
@@ -440,8 +454,8 @@ const DEFAULTS = {
     "Car (Insurance/Tax/Service)","Shopping","Subscriptions","Health","Phone/Internet",
     "Entertainment","Travel","Gifts","Debt repayment","Savings/Investing","Other"
   ],
-  // drive sync config
-  drive: { url: "", key: "" },
+  // firebase sync config
+  fb: { apiKey:"", authDomain:"", projectId:"", syncKey:"" },
   lastSync: 0,
   pendingLocal: 0,
   tx: [],
@@ -469,7 +483,6 @@ function toast(msg){
 }
 
 function setSyncStatus(mode, text){
-  // mode: ok | bad | wait
   const dot = $("syncDot");
   dot.classList.remove("dotOk","dotBad","dotWait");
   dot.classList.add(mode==="ok" ? "dotOk" : mode==="bad" ? "dotBad" : "dotWait");
@@ -478,9 +491,8 @@ function setSyncStatus(mode, text){
 
 function fmtTime(ts){
   if(!ts) return "—";
-  try{
-    return new Date(ts).toLocaleString("en-GB",{hour12:false});
-  }catch{return "—";}
+  try{ return new Date(ts).toLocaleString("en-GB",{hour12:false}); }
+  catch{ return "—"; }
 }
 
 /* ---------- Storage layer (IndexedDB + fallback) ---------- */
@@ -791,7 +803,7 @@ function renderTransactions(){
         state.tx.splice(idx,1);
         markPendingChange();
         await persist();
-        await syncPushIfConfigured(); // push+merge to Drive
+        await syncPushIfConfigured();
         toast("Deleted");
         renderTransactions(); renderQuick();
       }
@@ -822,8 +834,11 @@ function renderTransactions(){
 }
 
 function renderSettingsPanel(){
-  $("sDriveUrl").value = state.drive?.url || "";
-  $("sDriveKey").value = state.drive?.key || "";
+  $("sFbApiKey").value = state.fb?.apiKey || "";
+  $("sFbAuthDomain").value = state.fb?.authDomain || "";
+  $("sFbProjectId").value = state.fb?.projectId || "";
+  $("sFbSyncKey").value = state.fb?.syncKey || "";
+
   $("sYou").value = state.you;
   $("sPartner").value = state.partner;
   $("sIncomeCats").value = state.incomeCats.join("\n");
@@ -834,9 +849,7 @@ function renderSettingsPanel(){
   $("lastSync").textContent = fmtTime(state.lastSync);
   $("pendingCount").textContent = String(state.pendingLocal || 0);
 
-  if(!isDriveConfigured()){
-    setSyncStatus("wait","Not configured");
-  }
+  if(!isFirebaseConfigured()) setSyncStatus("wait","Not configured");
 }
 
 /* ---------- HTML helpers ---------- */
@@ -891,7 +904,7 @@ async function addOrUpdate(){
 
   markPendingChange();
   await persist();
-  await syncPushIfConfigured();  // push+merge to Drive
+  await syncPushIfConfigured();
   clearForm(false);
   renderQuick();
 }
@@ -980,30 +993,42 @@ function mergeList(a,b){
   return out;
 }
 
-/* ---------- Google Drive Sync (Apps Script Web App) ---------- */
-function isDriveConfigured(){
-  const url = (state.drive?.url || "").trim();
-  const key = (state.drive?.key || "").trim();
-  return url.startsWith("https://") && key.length >= 6;
+/* ---------- Firebase Sync ---------- */
+let fbApp=null, fbAuth=null, fbDb=null, fbReady=false;
+const COLLECTION = "couplesMoneyTracker";
+
+function isFirebaseConfigured(){
+  const f = state.fb || {};
+  return String(f.apiKey||"").trim().length > 10 &&
+         String(f.authDomain||"").includes(".") &&
+         String(f.projectId||"").trim().length > 2 &&
+         String(f.syncKey||"").trim().length >= 10;
 }
 
-async function drivePullLatest(){
-  const url = `${state.drive.url}?key=${encodeURIComponent(state.drive.key)}`;
-  const res = await fetch(url, { method:"GET", cache:"no-store" });
-  const j = await res.json();
-  if(!j.ok) throw new Error(j.error || "Pull failed");
-  return j.data;
-}
+async function ensureFirebase(){
+  if(!isFirebaseConfigured()) return false;
+  if(fbReady) return true;
 
-async function drivePushMerged(localData){
-  const res = await fetch(state.drive.url, {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ key: state.drive.key, data: localData })
-  });
-  const j = await res.json();
-  if(!j.ok) throw new Error(j.error || "Push failed");
-  return j.data;
+  const cfg = {
+    apiKey: state.fb.apiKey.trim(),
+    authDomain: state.fb.authDomain.trim(),
+    projectId: state.fb.projectId.trim()
+  };
+
+  try{
+    if(!getApps().length) fbApp = initializeApp(cfg);
+    else fbApp = getApps()[0];
+
+    fbAuth = getAuth(fbApp);
+    await signInAnonymously(fbAuth);
+
+    fbDb = getFirestore(fbApp);
+    fbReady = true;
+    return true;
+  }catch(e){
+    fbReady = false;
+    throw e;
+  }
 }
 
 function mergeTxKeepNewest(localTx, remoteTx){
@@ -1032,31 +1057,63 @@ function markPendingChange(){
   state.pendingLocal = (state.pendingLocal || 0) + 1;
 }
 
+async function fbPullLatest(){
+  await ensureFirebase();
+  const key = state.fb.syncKey.trim();
+  const ref = doc(fbDb, COLLECTION, key);
+  const snap = await getDoc(ref);
+  if(!snap.exists()) return null;
+  return snap.data();
+}
+
+async function fbPushMerged(localData){
+  await ensureFirebase();
+  const key = state.fb.syncKey.trim();
+  const ref = doc(fbDb, COLLECTION, key);
+  await setDoc(ref, {
+    ...localData,
+    updatedAt: Date.now(),
+    serverUpdatedAt: serverTimestamp()
+  }, { merge: true });
+  const snap = await getDoc(ref);
+  return snap.exists() ? snap.data() : null;
+}
+
 let _syncTimer = null;
 async function syncPushIfConfigured(){
-  if(!isDriveConfigured()) return;
+  if(!isFirebaseConfigured()) return;
 
-  // debounce pushes (avoid spamming while you add multiple entries quickly)
   clearTimeout(_syncTimer);
   return await new Promise((resolve)=>{
     _syncTimer = setTimeout(async ()=>{
       try{
         setSyncStatus("wait","Syncing…");
-        const merged = await drivePushMerged({ settings: buildSettings(), tx: state.tx });
+        const merged = await fbPushMerged({ settings: buildSettings(), tx: state.tx });
+
         if(merged && Array.isArray(merged.tx)){
           state.tx = mergeTxKeepNewest(state.tx, merged.tx);
         }
+        // merge settings (non-destructive)
+        const rs = merged?.settings || {};
+        state.you = rs.you || state.you;
+        state.partner = rs.partner || state.partner;
+        state.accounts = mergeList(state.accounts, rs.accounts || []);
+        state.incomeCats = mergeList(state.incomeCats, rs.incomeCats || []);
+        state.expenseCats = mergeList(state.expenseCats, rs.expenseCats || []);
+        state.paidBy = mergeList(state.paidBy, rs.paidBy || []);
+
         state.lastSync = Date.now();
         state.pendingLocal = 0;
         await persist();
-        fillMonthPicker();
+
+        fillMonthPicker(); fillPersonPicker(); fillDropdowns();
         renderQuick();
         if(!$("tab-transactions").classList.contains("hide")) renderTransactions();
         if(!$("tab-summary").classList.contains("hide")) renderSummary();
+
         setSyncStatus("ok","Synced");
         resolve(true);
       }catch(e){
-        // keep pendingLocal (offline / auth / url wrong)
         await persist();
         setSyncStatus("bad","Sync failed");
         resolve(false);
@@ -1066,14 +1123,14 @@ async function syncPushIfConfigured(){
 }
 
 async function syncPullOnOpen(){
-  if(!isDriveConfigured()) { setSyncStatus("wait","Not configured"); return; }
+  if(!isFirebaseConfigured()) { setSyncStatus("wait","Not configured"); return; }
   try{
     setSyncStatus("wait","Pulling latest…");
-    const remote = await drivePullLatest();
+    const remote = await fbPullLatest();
     if(remote && Array.isArray(remote.tx)){
       state.tx = mergeTxKeepNewest(state.tx, remote.tx);
     }
-    // merge settings (non-destructive)
+
     const rs = remote?.settings || {};
     state.you = rs.you || state.you;
     state.partner = rs.partner || state.partner;
@@ -1094,26 +1151,26 @@ async function syncPullOnOpen(){
 }
 
 async function syncNow(){
-  if(!isDriveConfigured()){
-    toast("Enter Drive URL + Sync Key");
+  if(!isFirebaseConfigured()){
+    toast("Enter Firebase config + Sync Key");
     setSyncStatus("wait","Not configured");
     return;
   }
-  // Pull then push (converge)
   await syncPullOnOpen();
   if(state.pendingLocal > 0) await syncPushIfConfigured();
   toast("Sync done");
 }
 
 async function testConnection(){
-  if(!isDriveConfigured()){
-    toast("Enter Drive URL + Sync Key");
+  if(!isFirebaseConfigured()){
+    toast("Enter Firebase config + Sync Key");
     setSyncStatus("wait","Not configured");
     return;
   }
   try{
     setSyncStatus("wait","Testing…");
-    await drivePullLatest();
+    await ensureFirebase();
+    await fbPullLatest(); // ok even if empty
     setSyncStatus("ok","Connection OK");
     toast("Connection OK");
   }catch(e){
@@ -1131,10 +1188,11 @@ function normalizeLines(s){
 }
 
 async function saveSettings(){
-  // Drive config
-  state.drive = {
-    url: $("sDriveUrl").value.trim(),
-    key: $("sDriveKey").value.trim()
+  state.fb = {
+    apiKey: $("sFbApiKey").value.trim(),
+    authDomain: $("sFbAuthDomain").value.trim(),
+    projectId: $("sFbProjectId").value.trim(),
+    syncKey: $("sFbSyncKey").value.trim()
   };
 
   state.you = $("sYou").value.trim() || DEFAULTS.you;
@@ -1156,11 +1214,9 @@ async function saveSettings(){
   fillPersonPicker(); fillMonthPicker(); fillDropdowns();
   renderQuick(); renderTransactions(); renderSummary();
 
-  if(isDriveConfigured()){
+  if(isFirebaseConfigured()){
     setSyncStatus("wait","Configured");
-    // Try a quick pull+merge once you save settings
     await syncPullOnOpen();
-    // Push your local pending changes
     await syncPushIfConfigured();
   } else {
     setSyncStatus("wait","Not configured");
@@ -1174,6 +1230,7 @@ async function resetAll(){
   state = structuredClone(DEFAULTS);
   state.selectedMonth = monthKey(new Date());
   state.personFilter = "all";
+  fbReady = false;
   await persist();
   hydrateUI();
   toast("Reset complete");
@@ -1224,7 +1281,7 @@ async function loadState(){
     state = {
       ...structuredClone(DEFAULTS),
       ...saved,
-      drive: { ...(DEFAULTS.drive), ...(saved.drive || {}) },
+      fb: { ...(DEFAULTS.fb), ...(saved.fb || {}) },
       tx: Array.isArray(saved.tx) ? saved.tx : []
     };
   } else {
@@ -1243,8 +1300,7 @@ function hydrateUI(){
   clearForm(true);
   renderQuick();
 
-  // Sync status
-  if(isDriveConfigured()) setSyncStatus("wait","Configured");
+  if(isFirebaseConfigured()) setSyncStatus("wait","Configured");
   else setSyncStatus("wait","Not configured");
 }
 
@@ -1296,7 +1352,6 @@ function wire(){
   $("btnSeedDemo").addEventListener("click", seedDemo);
   $("btnWipeMonth").addEventListener("click", clearThisMonth);
 
-  // If the device comes back online, try pushing pending changes
   window.addEventListener("online", async ()=>{
     if(state.pendingLocal > 0) await syncPushIfConfigured();
   });
@@ -1309,11 +1364,8 @@ function wire(){
   wire();
   hydrateUI();
 
-  // Render settings panel values if you open it later
-  // Auto pull+merge on open (best effort)
   await syncPullOnOpen();
 
-  // If we had pending local changes (e.g., offline earlier), push now
   if(state.pendingLocal > 0) await syncPushIfConfigured();
 
   toast("Ready");
