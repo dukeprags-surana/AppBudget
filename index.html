@@ -1,1375 +1,186 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<meta name="theme-color" content="#0B5FFF" />
-<title>Couples Money Tracker (Firebase Sync)</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Couples Money Tracker</title>
+
 <style>
-  :root{
-    --bg:#f4f6fb; --card:#ffffff; --text:#0b2140; --muted:#60708a;
-    --line:#d9e1ef; --accent:#0b5fff; --good:#0a8f3c; --bad:#c22;
-    --shadow:0 10px 26px rgba(11,33,64,.10);
-    --r:16px;
-    font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial;
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--text)}
-  header{
-    position:sticky;top:0;z-index:50;
-    background:linear-gradient(90deg,var(--accent),#2a7fff);
-    color:#fff;padding:14px 14px 10px;
-    box-shadow:0 8px 24px rgba(0,0,0,.12);
-  }
-  header .top{display:flex;align-items:center;gap:10px;justify-content:space-between}
-  .brand{display:flex;flex-direction:column;gap:2px}
-  .brand b{font-size:15px;letter-spacing:.2px}
-  .brand span{font-size:12px;opacity:.9}
-  .pill{
-    display:inline-flex;align-items:center;gap:8px;
-    padding:8px 10px;border-radius:999px;
-    background:rgba(255,255,255,.18);
-    border:1px solid rgba(255,255,255,.25);
-  }
-  .pill select{
-    background:transparent;border:none;color:#fff;outline:none;
-    font-weight:700;font-size:13px;appearance:none;-webkit-appearance:none;
-  }
-  .pill select option{color:#0b2140}
-  .tabs{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
-  .tab{
-    flex:1;min-width:90px;
-    padding:10px 10px;border-radius:999px;
-    background:rgba(255,255,255,.16);
-    border:1px solid rgba(255,255,255,.22);
-    color:#fff;font-weight:800;font-size:13px;
-  }
-  .tab.active{background:#fff;color:var(--accent);border-color:#fff}
-  main{padding:12px;max-width:980px;margin:0 auto}
-  .grid{display:grid;gap:12px}
-  @media(min-width:880px){ .grid{grid-template-columns: 1.1fr .9fr} }
-  .card{
-    background:var(--card);border:1px solid var(--line);border-radius:var(--r);
-    box-shadow:var(--shadow);padding:12px;
-  }
-  .card h3{margin:0 0 10px;font-size:14px}
-  .row{display:flex;gap:10px;flex-wrap:wrap}
-  .row > *{flex:1}
-  label{display:block;font-size:12px;color:var(--muted);margin:0 0 6px}
-  input,select,textarea,button{
-    width:100%;padding:11px 12px;border-radius:12px;border:1px solid var(--line);
-    font-size:14px;background:#fff;color:var(--text);outline:none;
-  }
-  textarea{min-height:42px;resize:vertical}
-  button{
-    background:var(--accent);border-color:var(--accent);
-    color:#fff;font-weight:900;cursor:pointer;
-  }
-  button.secondary{background:#fff;color:var(--text);border-color:var(--line)}
-  button.ghost{background:transparent;color:var(--text);border-color:var(--line)}
-  button.danger{background:var(--bad);border-color:var(--bad)}
-  .muted{color:var(--muted);font-size:12px}
-  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-  .kpi{
-    padding:10px;border-radius:14px;border:1px solid var(--line);background:#f7faff;
-    display:flex;flex-direction:column;gap:4px
-  }
-  .kpi span{font-size:12px;color:var(--muted)}
-  .kpi b{font-size:16px}
-  .kpi b.good{color:var(--good)}
-  .kpi b.bad{color:var(--bad)}
-  .list{display:flex;flex-direction:column;gap:10px}
-  .item{
-    border:1px solid var(--line);border-radius:14px;padding:10px;
-    display:flex;gap:10px;align-items:flex-start;justify-content:space-between;
-  }
-  .item .left{display:flex;flex-direction:column;gap:4px;min-width:0}
-  .item .meta{display:flex;gap:8px;flex-wrap:wrap}
-  .tag{
-    font-size:11px;color:var(--muted);
-    border:1px solid var(--line);background:#fff;border-radius:999px;
-    padding:4px 8px;
-  }
-  .amt{font-weight:950}
-  .amt.in{color:var(--good)}
-  .amt.out{color:var(--bad)}
-  .item .actions{display:flex;gap:8px;flex-shrink:0}
-  .iconBtn{width:auto;padding:9px 10px;border-radius:12px;font-weight:900}
-  .split{display:flex;gap:10px;flex-wrap:wrap}
-  .split > *{flex:1;min-width:160px}
-  .hr{height:1px;background:var(--line);margin:10px 0}
-  .toast{
-    position:fixed;left:50%;transform:translateX(-50%);
-    bottom:18px;z-index:200;
-    background:#0b2140;color:#fff;border-radius:999px;
-    padding:10px 14px;font-weight:800;font-size:13px;
-    box-shadow:0 14px 30px rgba(0,0,0,.22);
-    opacity:0;pointer-events:none;transition:.25s;
-  }
-  .toast.show{opacity:1}
-  .smallLink{color:var(--accent);text-decoration:none;font-weight:900;font-size:12px}
-  .twoCols{display:grid;grid-template-columns:1fr;gap:10px}
-  @media(min-width:520px){ .twoCols{grid-template-columns:1fr 1fr} }
-  .mono{font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
-  .hide{display:none !important}
-  .statusDot{
-    width:9px;height:9px;border-radius:50%;
-    display:inline-block;margin-right:8px;vertical-align:middle;
-    background:#bbb;
-  }
-  .dotOk{background:var(--good)}
-  .dotBad{background:var(--bad)}
-  .dotWait{background:#f5b400}
+body{
+  margin:0;
+  font-family:Arial,Helvetica,sans-serif;
+  background:#f4f6fb;
+}
+header{
+  background:#0b5fff;
+  color:white;
+  padding:12px;
+  font-weight:bold;
+}
+.container{
+  max-width:900px;
+  margin:auto;
+  padding:12px;
+}
+.card{
+  background:white;
+  border-radius:12px;
+  padding:12px;
+  margin-bottom:12px;
+  box-shadow:0 6px 16px rgba(0,0,0,.08);
+}
+input,select,button{
+  width:100%;
+  padding:10px;
+  margin-top:6px;
+  margin-bottom:10px;
+}
+button{
+  background:#0b5fff;
+  border:none;
+  color:white;
+  font-weight:bold;
+  border-radius:8px;
+}
+.list-item{
+  border:1px solid #ddd;
+  border-radius:10px;
+  padding:8px;
+  margin-bottom:8px;
+}
 </style>
 </head>
+
 <body>
-<header>
-  <div class="top">
-    <div class="brand">
-      <b>Couples Money Tracker</b>
-      <span>Offline-first • Firebase Sync (auto merge)</span>
-    </div>
 
-    <div class="pill" title="Select Month + Person">
-      <select id="monthPick"></select>
-      <select id="personPick"></select>
-    </div>
-  </div>
+<header>Couples Money Tracker (Firebase Auto Sync)</header>
 
-  <div class="tabs">
-    <button class="tab active" data-tab="add">Add</button>
-    <button class="tab" data-tab="transactions">Transactions</button>
-    <button class="tab" data-tab="summary">Summary</button>
-    <button class="tab" data-tab="settings">Settings</button>
-  </div>
-</header>
+<div class="container">
 
-<main>
-  <div class="grid">
+<div class="card">
+  <h3>Add Transaction</h3>
 
-    <!-- LEFT: tab content -->
-    <section id="tab-add" class="card">
-      <h3>Add income / expense</h3>
+  <label>Date</label>
+  <input type="date" id="date">
 
-      <div class="twoCols">
-        <div>
-          <label>Date</label>
-          <input id="fDate" type="date" />
-        </div>
+  <label>Type</label>
+  <select id="type">
+    <option value="expense">Expense</option>
+    <option value="income">Income</option>
+  </select>
 
-        <div>
-          <label>Type</label>
-          <select id="fType">
-            <option value="expense">Expense</option>
-            <option value="income">Income</option>
-            <option value="transfer">Transfer</option>
-          </select>
-        </div>
+  <label>Category</label>
+  <input id="category" placeholder="Groceries">
 
-        <div>
-          <label>Category</label>
-          <select id="fCategory"></select>
-        </div>
+  <label>Amount</label>
+  <input id="amount" placeholder="45.90">
 
-        <div>
-          <label>Amount</label>
-          <input id="fAmount" inputmode="decimal" placeholder="e.g. 45.90" />
-        </div>
+  <button id="saveBtn">Save</button>
+</div>
 
-        <div>
-          <label>Paid by</label>
-          <select id="fPaidBy"></select>
-        </div>
+<div class="card">
+  <h3>Transactions</h3>
+  <div id="list"></div>
+</div>
 
-        <div>
-          <label>Account</label>
-          <select id="fAccount"></select>
-        </div>
-      </div>
+</div>
 
-      <div style="margin-top:10px">
-        <label>Description / Notes</label>
-        <textarea id="fNote" placeholder="Optional"></textarea>
-      </div>
-
-      <div class="row" style="margin-top:10px">
-        <button id="btnAdd">Save</button>
-        <button id="btnClear" class="secondary">Clear</button>
-      </div>
-
-      <div class="muted" style="margin-top:10px">
-        Tip: Use <b>Transfer</b> for moving money between accounts (not counted as income/expense).
-      </div>
-    </section>
-
-    <section id="tab-transactions" class="card hide">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-        <h3 style="margin:0">Transactions</h3>
-        <div class="split" style="max-width:520px">
-          <select id="filterType">
-            <option value="all">All types</option>
-            <option value="expense">Expenses</option>
-            <option value="income">Income</option>
-            <option value="transfer">Transfers</option>
-          </select>
-          <select id="filterCategory">
-            <option value="all">All categories</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="hr"></div>
-
-      <div class="row">
-        <button id="btnExportCSV" class="secondary">Export CSV (month)</button>
-        <button id="btnExportJSON" class="secondary">Backup (JSON)</button>
-        <button id="btnImportJSON" class="ghost">Import / Merge (JSON)</button>
-      </div>
-      <input id="importFile" type="file" accept="application/json" class="hide" />
-
-      <div class="hr"></div>
-      <div id="txList" class="list"></div>
-      <div id="txEmpty" class="muted">No transactions for this filter/month.</div>
-    </section>
-
-    <section id="tab-summary" class="card hide">
-      <h3>Monthly summary</h3>
-
-      <div class="kpis">
-        <div class="kpi">
-          <span>Total income</span>
-          <b id="kIncome">£0.00</b>
-        </div>
-        <div class="kpi">
-          <span>Total expenses</span>
-          <b id="kExpense">£0.00</b>
-        </div>
-        <div class="kpi">
-          <span>Net (income - expenses)</span>
-          <b id="kNet" class="good">£0.00</b>
-        </div>
-      </div>
-
-      <div class="hr"></div>
-
-      <h3 style="margin-top:0">By person (selected month)</h3>
-      <div class="kpis">
-        <div class="kpi">
-          <span id="p1Name">You</span>
-          <b id="p1Net">£0.00</b>
-          <span class="muted">Income / Expense</span>
-          <span class="muted" id="p1IE">£0.00 / £0.00</span>
-        </div>
-        <div class="kpi">
-          <span id="p2Name">Partner</span>
-          <b id="p2Net">£0.00</b>
-          <span class="muted">Income / Expense</span>
-          <span class="muted" id="p2IE">£0.00 / £0.00</span>
-        </div>
-        <div class="kpi">
-          <span>Split suggestion</span>
-          <b id="kSplit">—</b>
-          <span class="muted">Based on income-share of expenses</span>
-        </div>
-      </div>
-
-      <div class="hr"></div>
-
-      <h3 style="margin:0 0 10px">Top expense categories</h3>
-      <div id="catList" class="list"></div>
-      <div id="catEmpty" class="muted">No expense categories yet.</div>
-    </section>
-
-    <section id="tab-settings" class="card hide">
-      <h3>Settings</h3>
-
-      <div class="card" style="box-shadow:none">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-          <b>Firebase Sync</b>
-          <span class="muted">
-            <span id="syncDot" class="statusDot dotWait"></span>
-            <span id="syncStatusText">Not configured</span>
-          </span>
-        </div>
-
-        <div class="twoCols" style="margin-top:10px">
-          <div>
-            <label>Firebase API Key</label>
-            <input id="sFbApiKey" placeholder="AIza..." />
-          </div>
-          <div>
-            <label>Firebase Auth Domain</label>
-            <input id="sFbAuthDomain" placeholder="your-project.firebaseapp.com" />
-          </div>
-          <div>
-            <label>Firebase Project ID</label>
-            <input id="sFbProjectId" placeholder="your-project-id" />
-          </div>
-          <div>
-            <label>Sync Key (shared)</label>
-            <input id="sFbSyncKey" placeholder="Use a long random key both devices share" />
-          </div>
-        </div>
-
-        <div class="row" style="margin-top:10px">
-          <button id="btnSyncNow">Sync now</button>
-          <button id="btnSyncTest" class="secondary">Test connection</button>
-        </div>
-
-        <div class="muted" style="margin-top:8px">
-          Auto behavior: on open it pulls latest + merges. After every save/delete it pushes + merges.
-        </div>
-
-        <div class="muted" style="margin-top:8px">
-          Last sync: <span id="lastSync">—</span> • Pending local changes: <span id="pendingCount">0</span>
-        </div>
-      </div>
-
-      <div class="hr"></div>
-
-      <div class="twoCols">
-        <div>
-          <label>Your name</label>
-          <input id="sYou" placeholder="e.g. Duke" />
-        </div>
-        <div>
-          <label>Partner name</label>
-          <input id="sPartner" placeholder="e.g. Aashna" />
-        </div>
-      </div>
-
-      <div class="hr"></div>
-
-      <h3 style="margin:0 0 10px">Categories</h3>
-      <div class="twoCols">
-        <div class="card" style="box-shadow:none">
-          <b>Income</b>
-          <div class="muted">One per line</div>
-          <textarea id="sIncomeCats" class="mono" style="margin-top:8px;min-height:140px"></textarea>
-        </div>
-        <div class="card" style="box-shadow:none">
-          <b>Expenses</b>
-          <div class="muted">One per line</div>
-          <textarea id="sExpenseCats" class="mono" style="margin-top:8px;min-height:140px"></textarea>
-        </div>
-      </div>
-
-      <div class="hr"></div>
-
-      <h3 style="margin:0 0 10px">Accounts & Paid-by</h3>
-      <div class="twoCols">
-        <div class="card" style="box-shadow:none">
-          <b>Accounts list</b>
-          <div class="muted">One per line</div>
-          <textarea id="sAccounts" class="mono" style="margin-top:8px;min-height:120px"></textarea>
-        </div>
-        <div class="card" style="box-shadow:none">
-          <b>Paid by list</b>
-          <div class="muted">One per line (You / Partner / Joint)</div>
-          <textarea id="sPaidBy" class="mono" style="margin-top:8px;min-height:120px"></textarea>
-        </div>
-      </div>
-
-      <div class="row" style="margin-top:10px">
-        <button id="btnSaveSettings">Save settings</button>
-        <button id="btnReset" class="danger">Reset ALL data</button>
-      </div>
-    </section>
-
-    <!-- RIGHT: Quick panel always visible -->
-    <aside class="card">
-      <h3 style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <span>Quick view</span>
-        <a class="smallLink" href="#" id="jumpToTx">Open transactions →</a>
-      </h3>
-
-      <div class="kpis" style="grid-template-columns:1fr 1fr">
-        <div class="kpi">
-          <span>This month income</span>
-          <b id="qIncome">£0.00</b>
-        </div>
-        <div class="kpi">
-          <span>This month expenses</span>
-          <b id="qExpense">£0.00</b>
-        </div>
-        <div class="kpi" style="grid-column:1 / -1">
-          <span>Net</span>
-          <b id="qNet" class="good">£0.00</b>
-        </div>
-      </div>
-
-      <div class="hr"></div>
-
-      <div class="muted">
-        <b>Install:</b> open in Safari/Chrome → “Add to Home Screen”.
-      </div>
-
-      <div class="hr"></div>
-
-      <div class="row">
-        <button id="btnSeedDemo" class="secondary">Add demo data</button>
-        <button id="btnWipeMonth" class="ghost">Clear this month</button>
-      </div>
-
-      <div class="muted" style="margin-top:10px">
-        If you and your partner both configure the same Firebase config + Sync Key, it auto-merges.
-      </div>
-    </aside>
-  </div>
-</main>
-
-<div id="toast" class="toast"></div>
-
-<!-- Firebase (modular SDK) -->
+<!-- FIREBASE -->
 <script type="module">
-/* ==========================================================
-   Couples Money Tracker — Firebase Sync Edition (Single HTML)
-   - Offline-first local storage (IndexedDB fallback localStorage)
-   - Sync via Firebase:
-       - Anonymous Auth
-       - Firestore doc: couplesMoneyTracker/{syncKey}
-       - Pull+merge on open
-       - Push+merge after changes (debounced)
-   ========================================================== */
 
 import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
 import {
-  getAuth, signInAnonymously
-} from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
-import {
-  getFirestore, doc, getDoc, setDoc, serverTimestamp
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
-const APP_KEY = "couples_money_tracker_firebase_v1";
 
-const DEFAULTS = {
-  you: "You",
-  partner: "Partner",
-  paidBy: ["You","Partner","Joint"],
-  accounts: ["Monzo","HSBC","Credit Card","Cash"],
-  incomeCats: ["Salary","Bonus","Side income","Refund/Cashback","Other"],
-  expenseCats: [
-    "Rent/Mortgage","Utilities","Groceries","Eating out","Transport (Fuel/Charging)",
-    "Car (Insurance/Tax/Service)","Shopping","Subscriptions","Health","Phone/Internet",
-    "Entertainment","Travel","Gifts","Debt repayment","Savings/Investing","Other"
-  ],
-  // firebase sync config
-  fb: { apiKey:"", authDomain:"", projectId:"", syncKey:"" },
-  lastSync: 0,
-  pendingLocal: 0,
-  tx: [],
-  selectedMonth: "",
-  personFilter: "all"
+// ⭐ BUILT-IN FIREBASE CONFIG
+const firebaseConfig = {
+  apiKey: "AIzaSyCwMqkHIuLdAU2pBXwgxMq6LlLjlDTqIOI",
+  authDomain: "budget-tracker-e4e82.firebaseapp.com",
+  projectId: "budget-tracker-e4e82"
 };
 
-const $ = (id)=>document.getElementById(id);
-const fmtGBP = (n)=> new Intl.NumberFormat("en-GB",{style:"currency",currency:"GBP"}).format(Number(n||0));
-const monthKey = (d)=> {
-  const dt = new Date(d);
-  if (isNaN(dt)) return "";
-  const y = dt.getFullYear();
-  const m = String(dt.getMonth()+1).padStart(2,"0");
-  return `${y}-${m}`;
-};
-const uid = ()=> (crypto?.randomUUID?.() || (Date.now()+"-"+Math.random().toString(16).slice(2)));
+// ⭐ SHARED SYNC KEY (same for both devices)
+const SYNC_KEY = "DUKE-AASHNA-2026-9f3c1a7d2b7a4c";
 
-function toast(msg){
-  const t = $("toast");
-  t.textContent = msg;
-  t.classList.add("show");
-  clearTimeout(toast._tm);
-  toast._tm = setTimeout(()=>t.classList.remove("show"), 1600);
+let app, auth, db;
+
+if(!getApps().length){
+  app = initializeApp(firebaseConfig);
+}else{
+  app = getApps()[0];
 }
 
-function setSyncStatus(mode, text){
-  const dot = $("syncDot");
-  dot.classList.remove("dotOk","dotBad","dotWait");
-  dot.classList.add(mode==="ok" ? "dotOk" : mode==="bad" ? "dotBad" : "dotWait");
-  $("syncStatusText").textContent = text;
-}
+auth = getAuth(app);
+await signInAnonymously(auth);
 
-function fmtTime(ts){
-  if(!ts) return "—";
-  try{ return new Date(ts).toLocaleString("en-GB",{hour12:false}); }
-  catch{ return "—"; }
-}
+db = getFirestore(app);
 
-/* ---------- Storage layer (IndexedDB + fallback) ---------- */
-const DB = {
-  db:null,
-  supported: "indexedDB" in window,
-  async init(){
-    if(!this.supported) return;
-    await new Promise((res, rej)=>{
-      const req = indexedDB.open(APP_KEY, 1);
-      req.onupgradeneeded = (e)=>{
-        const db = e.target.result;
-        if(!db.objectStoreNames.contains("kv")) db.createObjectStore("kv");
-      };
-      req.onsuccess = ()=>{ this.db=req.result; res(); };
-      req.onerror = ()=>rej(req.error);
-    });
-  },
-  async get(key){
-    if(this.db){
-      return await new Promise((res, rej)=>{
-        const tx = this.db.transaction("kv","readonly");
-        const st = tx.objectStore("kv");
-        const req = st.get(key);
-        req.onsuccess=()=>res(req.result);
-        req.onerror=()=>rej(req.error);
-      });
-    }
-    const raw = localStorage.getItem(APP_KEY+":"+key);
-    return raw ? JSON.parse(raw) : undefined;
-  },
-  async set(key,val){
-    if(this.db){
-      await new Promise((res, rej)=>{
-        const tx = this.db.transaction("kv","readwrite");
-        const st = tx.objectStore("kv");
-        const req = st.put(val,key);
-        req.onsuccess=()=>res();
-        req.onerror=()=>rej(req.error);
-      });
-      return;
-    }
-    localStorage.setItem(APP_KEY+":"+key, JSON.stringify(val));
-  }
-};
+const ref = doc(db,"couplesMoneyTracker",SYNC_KEY);
 
-let state = null;
+let state = { tx:[] };
 
-/* ---------- Tabs ---------- */
-function setTab(name){
-  for(const b of document.querySelectorAll(".tab")){
-    b.classList.toggle("active", b.dataset.tab === name);
-  }
-  for(const s of ["add","transactions","summary","settings"]){
-    $("tab-"+s).classList.toggle("hide", s!==name);
-  }
-  if(name==="transactions") renderTransactions();
-  if(name==="summary") renderSummary();
-  if(name==="settings") renderSettingsPanel();
-}
+function render(){
+  const list = document.getElementById("list");
+  list.innerHTML = "";
 
-/* ---------- Month picker ---------- */
-function fillMonthPicker(){
-  const sel = $("monthPick");
-  sel.innerHTML = "";
-  const now = new Date();
-  const months = [];
-  for(let i=0;i<18;i++){
-    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
-    months.push(monthKey(d));
-  }
-  for(const t of state.tx){
-    if(t.month && !months.includes(t.month)) months.push(t.month);
-  }
-  months.sort((a,b)=>b.localeCompare(a));
-  for(const m of months){
-    const opt = document.createElement("option");
-    opt.value = m; opt.textContent = m;
-    sel.appendChild(opt);
-  }
-  if(!state.selectedMonth || !months.includes(state.selectedMonth)){
-    state.selectedMonth = monthKey(new Date());
-  }
-  sel.value = state.selectedMonth;
-}
+  state.tx.sort((a,b)=>b.date.localeCompare(a.date));
 
-/* ---------- Person picker ---------- */
-function fillPersonPicker(){
-  const sel = $("personPick");
-  sel.innerHTML="";
-  const people = [
-    {id:"all", name:"All"},
-    {id:"you", name: state.you},
-    {id:"partner", name: state.partner},
-    {id:"joint", name:"Joint"}
-  ];
-  for(const p of people){
-    const opt = document.createElement("option");
-    opt.value = p.id; opt.textContent = p.name;
-    sel.appendChild(opt);
-  }
-  if(!state.personFilter) state.personFilter="all";
-  sel.value = state.personFilter;
-}
-
-/* ---------- Form dropdowns ---------- */
-function fillDropdowns(){
-  const paid = $("fPaidBy");
-  paid.innerHTML="";
-  const list = [
-    {k:"you", v: state.you},
-    {k:"partner", v: state.partner},
-    {k:"joint", v:"Joint"}
-  ];
-  for(const o of list){
-    const opt=document.createElement("option");
-    opt.value=o.k; opt.textContent=o.v;
-    paid.appendChild(opt);
-  }
-
-  const acc = $("fAccount");
-  acc.innerHTML="";
-  for(const a of state.accounts){
-    const opt=document.createElement("option");
-    opt.value=a; opt.textContent=a;
-    acc.appendChild(opt);
-  }
-
-  refreshCategoryDropdown();
-
-  const fc = $("filterCategory");
-  fc.innerHTML = `<option value="all">All categories</option>`;
-  const allCats = [...new Set([...state.incomeCats, ...state.expenseCats, "Transfer"])];
-  for(const c of allCats){
-    const opt=document.createElement("option");
-    opt.value=c; opt.textContent=c;
-    fc.appendChild(opt);
-  }
-
-  $("p1Name").textContent = state.you;
-  $("p2Name").textContent = state.partner;
-}
-
-function refreshCategoryDropdown(){
-  const type = $("fType").value;
-  const cat = $("fCategory");
-  cat.innerHTML="";
-  let list = [];
-  if(type==="income") list = state.incomeCats;
-  else if(type==="expense") list = state.expenseCats;
-  else list = ["Transfer"];
-  for(const c of list){
-    const opt=document.createElement("option");
-    opt.value=c; opt.textContent=c;
-    cat.appendChild(opt);
-  }
-}
-
-/* ---------- Computations ---------- */
-function getFilteredTx({month=state.selectedMonth, person=state.personFilter, type=$("filterType")?.value || "all", cat=$("filterCategory")?.value || "all"} = {}){
-  return state.tx.filter(t=>{
-    if(month && t.month !== month) return false;
-    if(person && person!=="all" && t.paidBy !== person) return false;
-    if(type && type!=="all" && t.type !== type) return false;
-    if(cat && cat!=="all" && t.category !== cat) return false;
-    return true;
-  }).sort((a,b)=> (b.date||"").localeCompare(a.date||""));
-}
-
-function sumBy(list, pred){
-  return list.reduce((acc,t)=> acc + (pred(t) ? Number(t.amount||0) : 0), 0);
-}
-
-function monthTotals(month=state.selectedMonth){
-  const tx = state.tx.filter(t=>t.month===month);
-  const income = sumBy(tx, t=>t.type==="income");
-  const expense = sumBy(tx, t=>t.type==="expense");
-  return {income, expense, net: income-expense};
-}
-
-function personTotals(month=state.selectedMonth){
-  const tx = state.tx.filter(t=>t.month===month);
-  const out = {};
-  for(const p of ["you","partner","joint"]){
-    const ptx = tx.filter(t=>t.paidBy===p);
-    out[p] = {
-      income: sumBy(ptx, t=>t.type==="income"),
-      expense: sumBy(ptx, t=>t.type==="expense"),
-    };
-    out[p].net = out[p].income - out[p].expense;
-  }
-  return out;
-}
-
-function topExpenseCats(month=state.selectedMonth){
-  const tx = state.tx.filter(t=>t.month===month && t.type==="expense");
-  const map = new Map();
-  for(const t of tx){
-    map.set(t.category, (map.get(t.category)||0) + Number(t.amount||0));
-  }
-  return [...map.entries()].sort((a,b)=>b[1]-a[1]);
-}
-
-/* ---------- Render ---------- */
-function renderQuick(){
-  const {income, expense, net} = monthTotals();
-  $("qIncome").textContent = fmtGBP(income);
-  $("qExpense").textContent = fmtGBP(expense);
-  $("qNet").textContent = fmtGBP(net);
-  $("qNet").classList.toggle("bad", net<0);
-  $("qNet").classList.toggle("good", net>=0);
-
-  $("lastSync").textContent = fmtTime(state.lastSync);
-  $("pendingCount").textContent = String(state.pendingLocal || 0);
-}
-
-function renderSummary(){
-  const {income, expense, net} = monthTotals();
-  $("kIncome").textContent = fmtGBP(income);
-  $("kExpense").textContent = fmtGBP(expense);
-  $("kNet").textContent = fmtGBP(net);
-  $("kNet").classList.toggle("bad", net<0);
-  $("kNet").classList.toggle("good", net>=0);
-
-  const pt = personTotals();
-  const you = pt.you, partner = pt.partner;
-
-  $("p1Net").textContent = fmtGBP(you.net);
-  $("p2Net").textContent = fmtGBP(partner.net);
-  $("p1IE").textContent = `${fmtGBP(you.income)} / ${fmtGBP(you.expense)}`;
-  $("p2IE").textContent = `${fmtGBP(partner.income)} / ${fmtGBP(partner.expense)}`;
-
-  const incSum = you.income + partner.income;
-  const totalExp = expense;
-  let suggestion = "—";
-  if(incSum > 0 && totalExp > 0){
-    const youShare = totalExp * (you.income / incSum);
-    const partnerShare = totalExp * (partner.income / incSum);
-    suggestion = `${state.you}: ${fmtGBP(youShare)} • ${state.partner}: ${fmtGBP(partnerShare)}`;
-  }
-  $("kSplit").textContent = suggestion;
-
-  const cats = topExpenseCats();
-  const wrap = $("catList");
-  wrap.innerHTML = "";
-  if(cats.length===0){
-    $("catEmpty").classList.remove("hide");
-  } else {
-    $("catEmpty").classList.add("hide");
-    const top = cats.slice(0, 8);
-    for(const [c, v] of top){
-      const div = document.createElement("div");
-      div.className="item";
-      div.innerHTML = `
-        <div class="left">
-          <b>${escapeHtml(c||"—")}</b>
-          <div class="muted">Selected month</div>
-        </div>
-        <div class="amt out">${fmtGBP(v)}</div>
-      `;
-      wrap.appendChild(div);
-    }
-  }
-}
-
-function renderTransactions(){
-  const tx = getFilteredTx();
-  const wrap = $("txList");
-  wrap.innerHTML = "";
-  $("txEmpty").classList.toggle("hide", tx.length>0);
-
-  for(const t of tx){
-    const div = document.createElement("div");
-    div.className="item";
-    const signClass = t.type==="income" ? "in" : (t.type==="expense" ? "out" : "");
-    const sign = t.type==="income" ? "+" : (t.type==="expense" ? "−" : "↔");
-    const who = t.paidBy==="you" ? state.you : (t.paidBy==="partner" ? state.partner : "Joint");
+  state.tx.forEach(t=>{
+    const div=document.createElement("div");
+    div.className="list-item";
     div.innerHTML = `
-      <div class="left">
-        <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
-          <b>${escapeHtml(t.category || "—")}</b>
-          <span class="muted">${escapeHtml(t.date || "")}</span>
-        </div>
-        <div class="meta">
-          <span class="tag">${escapeHtml(t.type)}</span>
-          <span class="tag">${escapeHtml(who)}</span>
-          <span class="tag">${escapeHtml(t.account||"")}</span>
-        </div>
-        ${t.note ? `<div class="muted">${escapeHtml(t.note)}</div>` : ""}
-      </div>
-
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
-        <div class="amt ${signClass}">${sign} ${fmtGBP(t.amount)}</div>
-        <div class="actions">
-          <button class="iconBtn secondary" data-edit="${t.id}">Edit</button>
-          <button class="iconBtn danger" data-del="${t.id}">Del</button>
-        </div>
-      </div>
+      <b>${t.type.toUpperCase()}</b> - £${t.amount}<br>
+      ${t.category}<br>
+      <small>${t.date}</small>
     `;
-    wrap.appendChild(div);
-  }
-
-  wrap.querySelectorAll("[data-del]").forEach(b=>{
-    b.addEventListener("click", async ()=>{
-      const id = b.getAttribute("data-del");
-      const idx = state.tx.findIndex(x=>x.id===id);
-      if(idx>=0){
-        state.tx.splice(idx,1);
-        markPendingChange();
-        await persist();
-        await syncPushIfConfigured();
-        toast("Deleted");
-        renderTransactions(); renderQuick();
-      }
-    });
-  });
-
-  wrap.querySelectorAll("[data-edit]").forEach(b=>{
-    b.addEventListener("click", ()=>{
-      const id = b.getAttribute("data-edit");
-      const t = state.tx.find(x=>x.id===id);
-      if(!t) return;
-
-      $("fDate").value = t.date;
-      $("fType").value = t.type;
-      refreshCategoryDropdown();
-      $("fCategory").value = t.category || (t.type==="transfer"?"Transfer":"");
-      $("fAmount").value = t.amount;
-      $("fPaidBy").value = t.paidBy;
-      $("fAccount").value = t.account || state.accounts[0] || "";
-      $("fNote").value = t.note || "";
-
-      $("btnAdd").textContent = "Update";
-      $("btnAdd").dataset.editId = id;
-      setTab("add");
-      toast("Edit loaded");
-    });
+    list.appendChild(div);
   });
 }
 
-function renderSettingsPanel(){
-  $("sFbApiKey").value = state.fb?.apiKey || "";
-  $("sFbAuthDomain").value = state.fb?.authDomain || "";
-  $("sFbProjectId").value = state.fb?.projectId || "";
-  $("sFbSyncKey").value = state.fb?.syncKey || "";
-
-  $("sYou").value = state.you;
-  $("sPartner").value = state.partner;
-  $("sIncomeCats").value = state.incomeCats.join("\n");
-  $("sExpenseCats").value = state.expenseCats.join("\n");
-  $("sAccounts").value = state.accounts.join("\n");
-  $("sPaidBy").value = state.paidBy.join("\n");
-
-  $("lastSync").textContent = fmtTime(state.lastSync);
-  $("pendingCount").textContent = String(state.pendingLocal || 0);
-
-  if(!isFirebaseConfigured()) setSyncStatus("wait","Not configured");
+async function saveRemote(){
+  await setDoc(ref,state,{merge:true});
 }
 
-/* ---------- HTML helpers ---------- */
-function escapeHtml(s){
-  return String(s).replace(/[&<>"']/g, m=>({
-    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-  }[m]));
-}
-
-/* ---------- Form: add/update ---------- */
-async function addOrUpdate(){
-  const dateVal = $("fDate").value;
-  const typeVal = $("fType").value;
-  const catVal = $("fCategory").value;
-  const amtStr = ($("fAmount").value||"").replace(/,/g,"").trim();
-  const paidBy = $("fPaidBy").value;
-  const account = $("fAccount").value;
-  const note = $("fNote").value.trim();
-
-  const amt = Number(amtStr);
-  if(!dateVal){ toast("Pick a date"); return; }
-  if(!amtStr || !isFinite(amt) || amt<=0){ toast("Enter a valid amount"); return; }
+document.getElementById("saveBtn").addEventListener("click",async()=>{
 
   const tx = {
-    id: $("btnAdd").dataset.editId || uid(),
-    date: dateVal,
-    month: monthKey(dateVal),
-    type: typeVal,
-    category: typeVal==="transfer" ? "Transfer" : catVal,
-    amount: Math.round(amt*100)/100,
-    paidBy,
-    account,
-    note,
-    updatedAt: Date.now()
+    id: crypto.randomUUID(),
+    date: document.getElementById("date").value,
+    type: document.getElementById("type").value,
+    category: document.getElementById("category").value,
+    amount: Number(document.getElementById("amount").value)
   };
 
-  const editId = $("btnAdd").dataset.editId;
-  if(editId){
-    const idx = state.tx.findIndex(x=>x.id===editId);
-    if(idx>=0) state.tx[idx] = tx;
-    $("btnAdd").textContent = "Save";
-    delete $("btnAdd").dataset.editId;
-    toast("Updated");
-  } else {
-    state.tx.push(tx);
-    toast("Saved");
-  }
-
-  if(state.selectedMonth !== tx.month){
-    fillMonthPicker();
-  }
-
-  markPendingChange();
-  await persist();
-  await syncPushIfConfigured();
-  clearForm(false);
-  renderQuick();
-}
-
-function clearForm(resetEdit=true){
-  $("fDate").value = new Date().toISOString().slice(0,10);
-  $("fType").value = "expense";
-  refreshCategoryDropdown();
-  $("fCategory").selectedIndex = 0;
-  $("fAmount").value = "";
-  $("fPaidBy").value = "you";
-  $("fAccount").selectedIndex = 0;
-  $("fNote").value = "";
-  if(resetEdit){
-    $("btnAdd").textContent = "Save";
-    delete $("btnAdd").dataset.editId;
-  }
-}
-
-/* ---------- Export / Import ---------- */
-function download(filename, text, mime="text/plain"){
-  const blob = new Blob([text], {type:mime});
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
-}
-
-function exportCSV(){
-  const tx = getFilteredTx({type:"all",cat:"all"});
-  const rows = [["Date","Month","Type","Category","Amount","PaidBy","Account","Note","UpdatedAt"]];
-  for(const t of tx){
-    const who = t.paidBy==="you" ? state.you : (t.paidBy==="partner" ? state.partner : "Joint");
-    rows.push([t.date,t.month,t.type,t.category,String(t.amount),who,t.account,(t.note||""), String(t.updatedAt||"")]);
-  }
-  const csv = rows.map(r=>r.map(v=>{
-    const s = String(v ?? "");
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
-  }).join(",")).join("\n");
-  download(`transactions_${state.selectedMonth}.csv`, csv, "text/csv");
-  toast("CSV exported");
-}
-
-function exportJSON(){
-  const pack = {
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    settings: buildSettings(),
-    tx: state.tx
-  };
-  download(`money_backup_${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(pack,null,2), "application/json");
-  toast("JSON exported");
-}
-
-async function importJSONFile(file){
-  const text = await file.text();
-  let pack;
-  try{ pack = JSON.parse(text); } catch { toast("Invalid JSON"); return; }
-  if(!pack || !Array.isArray(pack.tx)){ toast("Not a valid backup"); return; }
-
-  state.tx = mergeTxKeepNewest(state.tx, pack.tx);
-
-  const s = pack.settings || {};
-  state.you = state.you || s.you || DEFAULTS.you;
-  state.partner = state.partner || s.partner || DEFAULTS.partner;
-  state.accounts = mergeList(state.accounts, s.accounts || []);
-  state.incomeCats = mergeList(state.incomeCats, s.incomeCats || []);
-  state.expenseCats = mergeList(state.expenseCats, s.expenseCats || []);
-  state.paidBy = mergeList(state.paidBy, s.paidBy || []);
-
-  markPendingChange();
-  await persist();
-  fillMonthPicker(); fillPersonPicker(); fillDropdowns();
-  renderQuick(); renderTransactions(); renderSummary();
-
-  await syncPushIfConfigured();
-  toast("Imported & merged");
-}
-
-function mergeList(a,b){
-  const out = [...(a||[])];
-  for(const x of (b||[])){
-    if(x && !out.includes(x)) out.push(x);
-  }
-  return out;
-}
-
-/* ---------- Firebase Sync ---------- */
-let fbApp=null, fbAuth=null, fbDb=null, fbReady=false;
-const COLLECTION = "couplesMoneyTracker";
-
-function isFirebaseConfigured(){
-  const f = state.fb || {};
-  return String(f.apiKey||"").trim().length > 10 &&
-         String(f.authDomain||"").includes(".") &&
-         String(f.projectId||"").trim().length > 2 &&
-         String(f.syncKey||"").trim().length >= 10;
-}
-
-async function ensureFirebase(){
-  if(!isFirebaseConfigured()) return false;
-  if(fbReady) return true;
-
-  const cfg = {
-    apiKey: state.fb.apiKey.trim(),
-    authDomain: state.fb.authDomain.trim(),
-    projectId: state.fb.projectId.trim()
-  };
-
-  try{
-    if(!getApps().length) fbApp = initializeApp(cfg);
-    else fbApp = getApps()[0];
-
-    fbAuth = getAuth(fbApp);
-    await signInAnonymously(fbAuth);
-
-    fbDb = getFirestore(fbApp);
-    fbReady = true;
-    return true;
-  }catch(e){
-    fbReady = false;
-    throw e;
-  }
-}
-
-function mergeTxKeepNewest(localTx, remoteTx){
-  const map = new Map();
-  for(const t of (localTx||[])) if(t && t.id) map.set(t.id, t);
-  for(const t of (remoteTx||[])){
-    if(!t || !t.id) continue;
-    const cur = map.get(t.id);
-    if(!cur || (t.updatedAt||0) > (cur.updatedAt||0)) map.set(t.id, t);
-  }
-  return [...map.values()];
-}
-
-function buildSettings(){
-  return {
-    you: state.you,
-    partner: state.partner,
-    accounts: state.accounts,
-    incomeCats: state.incomeCats,
-    expenseCats: state.expenseCats,
-    paidBy: state.paidBy
-  };
-}
-
-function markPendingChange(){
-  state.pendingLocal = (state.pendingLocal || 0) + 1;
-}
-
-async function fbPullLatest(){
-  await ensureFirebase();
-  const key = state.fb.syncKey.trim();
-  const ref = doc(fbDb, COLLECTION, key);
-  const snap = await getDoc(ref);
-  if(!snap.exists()) return null;
-  return snap.data();
-}
-
-async function fbPushMerged(localData){
-  await ensureFirebase();
-  const key = state.fb.syncKey.trim();
-  const ref = doc(fbDb, COLLECTION, key);
-  await setDoc(ref, {
-    ...localData,
-    updatedAt: Date.now(),
-    serverUpdatedAt: serverTimestamp()
-  }, { merge: true });
-  const snap = await getDoc(ref);
-  return snap.exists() ? snap.data() : null;
-}
-
-let _syncTimer = null;
-async function syncPushIfConfigured(){
-  if(!isFirebaseConfigured()) return;
-
-  clearTimeout(_syncTimer);
-  return await new Promise((resolve)=>{
-    _syncTimer = setTimeout(async ()=>{
-      try{
-        setSyncStatus("wait","Syncing…");
-        const merged = await fbPushMerged({ settings: buildSettings(), tx: state.tx });
-
-        if(merged && Array.isArray(merged.tx)){
-          state.tx = mergeTxKeepNewest(state.tx, merged.tx);
-        }
-        // merge settings (non-destructive)
-        const rs = merged?.settings || {};
-        state.you = rs.you || state.you;
-        state.partner = rs.partner || state.partner;
-        state.accounts = mergeList(state.accounts, rs.accounts || []);
-        state.incomeCats = mergeList(state.incomeCats, rs.incomeCats || []);
-        state.expenseCats = mergeList(state.expenseCats, rs.expenseCats || []);
-        state.paidBy = mergeList(state.paidBy, rs.paidBy || []);
-
-        state.lastSync = Date.now();
-        state.pendingLocal = 0;
-        await persist();
-
-        fillMonthPicker(); fillPersonPicker(); fillDropdowns();
-        renderQuick();
-        if(!$("tab-transactions").classList.contains("hide")) renderTransactions();
-        if(!$("tab-summary").classList.contains("hide")) renderSummary();
-
-        setSyncStatus("ok","Synced");
-        resolve(true);
-      }catch(e){
-        await persist();
-        setSyncStatus("bad","Sync failed");
-        resolve(false);
-      }
-    }, 450);
-  });
-}
-
-async function syncPullOnOpen(){
-  if(!isFirebaseConfigured()) { setSyncStatus("wait","Not configured"); return; }
-  try{
-    setSyncStatus("wait","Pulling latest…");
-    const remote = await fbPullLatest();
-    if(remote && Array.isArray(remote.tx)){
-      state.tx = mergeTxKeepNewest(state.tx, remote.tx);
-    }
-
-    const rs = remote?.settings || {};
-    state.you = rs.you || state.you;
-    state.partner = rs.partner || state.partner;
-    state.accounts = mergeList(state.accounts, rs.accounts || []);
-    state.incomeCats = mergeList(state.incomeCats, rs.incomeCats || []);
-    state.expenseCats = mergeList(state.expenseCats, rs.expenseCats || []);
-    state.paidBy = mergeList(state.paidBy, rs.paidBy || []);
-
-    state.lastSync = Date.now();
-    await persist();
-
-    fillMonthPicker(); fillPersonPicker(); fillDropdowns();
-    renderQuick();
-    setSyncStatus("ok","Pulled & merged");
-  }catch(e){
-    setSyncStatus("bad","Pull failed");
-  }
-}
-
-async function syncNow(){
-  if(!isFirebaseConfigured()){
-    toast("Enter Firebase config + Sync Key");
-    setSyncStatus("wait","Not configured");
+  if(!tx.date || !tx.amount){
+    alert("Enter date + amount");
     return;
   }
-  await syncPullOnOpen();
-  if(state.pendingLocal > 0) await syncPushIfConfigured();
-  toast("Sync done");
-}
 
-async function testConnection(){
-  if(!isFirebaseConfigured()){
-    toast("Enter Firebase config + Sync Key");
-    setSyncStatus("wait","Not configured");
-    return;
+  state.tx.push(tx);
+  render();
+  await saveRemote();
+});
+
+
+// ⭐ REALTIME SYNC (AUTO)
+onSnapshot(ref,(snap)=>{
+  if(snap.exists()){
+    state = snap.data();
+    if(!state.tx) state.tx=[];
+    render();
   }
-  try{
-    setSyncStatus("wait","Testing…");
-    await ensureFirebase();
-    await fbPullLatest(); // ok even if empty
-    setSyncStatus("ok","Connection OK");
-    toast("Connection OK");
-  }catch(e){
-    setSyncStatus("bad","Connection failed");
-    toast("Connection failed");
-  }
-}
+});
 
-/* ---------- Settings save/reset ---------- */
-function normalizeLines(s){
-  return String(s||"")
-    .split(/\r?\n/)
-    .map(x=>x.trim())
-    .filter(Boolean);
-}
+console.log("Firebase connected ✔");
 
-async function saveSettings(){
-  state.fb = {
-    apiKey: $("sFbApiKey").value.trim(),
-    authDomain: $("sFbAuthDomain").value.trim(),
-    projectId: $("sFbProjectId").value.trim(),
-    syncKey: $("sFbSyncKey").value.trim()
-  };
-
-  state.you = $("sYou").value.trim() || DEFAULTS.you;
-  state.partner = $("sPartner").value.trim() || DEFAULTS.partner;
-
-  const income = normalizeLines($("sIncomeCats").value);
-  const expense = normalizeLines($("sExpenseCats").value);
-  const accounts = normalizeLines($("sAccounts").value);
-  const paidBy = normalizeLines($("sPaidBy").value);
-
-  state.incomeCats = income.length ? income : DEFAULTS.incomeCats.slice();
-  state.expenseCats = expense.length ? expense : DEFAULTS.expenseCats.slice();
-  state.accounts = accounts.length ? accounts : DEFAULTS.accounts.slice();
-  state.paidBy = paidBy.length ? paidBy : DEFAULTS.paidBy.slice();
-
-  markPendingChange();
-  await persist();
-
-  fillPersonPicker(); fillMonthPicker(); fillDropdowns();
-  renderQuick(); renderTransactions(); renderSummary();
-
-  if(isFirebaseConfigured()){
-    setSyncStatus("wait","Configured");
-    await syncPullOnOpen();
-    await syncPushIfConfigured();
-  } else {
-    setSyncStatus("wait","Not configured");
-  }
-
-  toast("Saved");
-}
-
-async function resetAll(){
-  if(!confirm("This will delete ALL transactions and settings on this device. Continue?")) return;
-  state = structuredClone(DEFAULTS);
-  state.selectedMonth = monthKey(new Date());
-  state.personFilter = "all";
-  fbReady = false;
-  await persist();
-  hydrateUI();
-  toast("Reset complete");
-}
-
-async function clearThisMonth(){
-  if(!confirm(`Delete ALL transactions in ${state.selectedMonth}?`)) return;
-  state.tx = state.tx.filter(t=>t.month !== state.selectedMonth);
-  markPendingChange();
-  await persist();
-  await syncPushIfConfigured();
-  fillMonthPicker();
-  renderQuick(); renderTransactions(); renderSummary();
-  toast("Month cleared");
-}
-
-/* ---------- Demo seed ---------- */
-async function seedDemo(){
-  const m = state.selectedMonth || monthKey(new Date());
-  const baseDate = m + "-05";
-  const demo = [
-    {date: baseDate, type:"income", category: state.incomeCats[0]||"Salary", amount: 3200, paidBy:"you", account: state.accounts[0]||"Monzo", note:"Monthly salary"},
-    {date: m+"-07", type:"income", category: state.incomeCats[2]||"Side income", amount: 420, paidBy:"partner", account: state.accounts[1]||"HSBC", note:"Side income"},
-    {date: m+"-01", type:"expense", category: "Rent/Mortgage", amount: 1250, paidBy:"joint", account: state.accounts[0]||"Monzo", note:"Rent"},
-    {date: m+"-10", type:"expense", category: "Groceries", amount: 96.40, paidBy:"you", account: state.accounts[0]||"Monzo", note:"Tesco"},
-    {date: m+"-12", type:"expense", category: "Eating out", amount: 42.10, paidBy:"partner", account: state.accounts[1]||"HSBC", note:"Dinner"},
-    {date: m+"-14", type:"expense", category: "Transport (Fuel/Charging)", amount: 22.50, paidBy:"you", account: state.accounts[0]||"Monzo", note:"Charging"},
-    {date: m+"-18", type:"expense", category: "Subscriptions", amount: 18.99, paidBy:"joint", account: state.accounts[2]||"Credit Card", note:"Streaming"},
-  ].map(x=>({id:uid(), month:monthKey(x.date), updatedAt:Date.now(), ...x}));
-
-  state.tx.push(...demo);
-  markPendingChange();
-  await persist();
-  await syncPushIfConfigured();
-  fillMonthPicker();
-  renderQuick();
-  toast("Demo added");
-}
-
-/* ---------- Persist / Load ---------- */
-async function persist(){
-  await DB.set("state", state);
-}
-
-async function loadState(){
-  const saved = await DB.get("state");
-  if(saved && typeof saved === "object"){
-    state = {
-      ...structuredClone(DEFAULTS),
-      ...saved,
-      fb: { ...(DEFAULTS.fb), ...(saved.fb || {}) },
-      tx: Array.isArray(saved.tx) ? saved.tx : []
-    };
-  } else {
-    state = structuredClone(DEFAULTS);
-  }
-  if(!state.selectedMonth) state.selectedMonth = monthKey(new Date());
-  if(!state.personFilter) state.personFilter = "all";
-}
-
-/* ---------- UI hydrate ---------- */
-function hydrateUI(){
-  fillMonthPicker();
-  fillPersonPicker();
-  fillDropdowns();
-
-  clearForm(true);
-  renderQuick();
-
-  if(isFirebaseConfigured()) setSyncStatus("wait","Configured");
-  else setSyncStatus("wait","Not configured");
-}
-
-/* ---------- Events ---------- */
-function wire(){
-  document.querySelectorAll(".tab").forEach(b=>{
-    b.addEventListener("click", ()=>setTab(b.dataset.tab));
-  });
-
-  $("jumpToTx").addEventListener("click",(e)=>{e.preventDefault(); setTab("transactions");});
-
-  $("monthPick").addEventListener("change", async ()=>{
-    state.selectedMonth = $("monthPick").value;
-    await persist();
-    renderQuick();
-    if(!$("tab-transactions").classList.contains("hide")) renderTransactions();
-    if(!$("tab-summary").classList.contains("hide")) renderSummary();
-  });
-
-  $("personPick").addEventListener("change", async ()=>{
-    state.personFilter = $("personPick").value;
-    await persist();
-    if(!$("tab-transactions").classList.contains("hide")) renderTransactions();
-  });
-
-  $("fType").addEventListener("change", refreshCategoryDropdown);
-
-  $("btnAdd").addEventListener("click", addOrUpdate);
-  $("btnClear").addEventListener("click", ()=>{ clearForm(true); toast("Cleared"); });
-
-  $("filterType").addEventListener("change", renderTransactions);
-  $("filterCategory").addEventListener("change", renderTransactions);
-
-  $("btnExportCSV").addEventListener("click", exportCSV);
-  $("btnExportJSON").addEventListener("click", exportJSON);
-  $("btnImportJSON").addEventListener("click", ()=>$("importFile").click());
-  $("importFile").addEventListener("change", async ()=>{
-    const f = $("importFile").files?.[0];
-    if(f) await importJSONFile(f);
-    $("importFile").value="";
-  });
-
-  $("btnSaveSettings").addEventListener("click", saveSettings);
-  $("btnReset").addEventListener("click", resetAll);
-
-  $("btnSyncNow").addEventListener("click", syncNow);
-  $("btnSyncTest").addEventListener("click", testConnection);
-
-  $("btnSeedDemo").addEventListener("click", seedDemo);
-  $("btnWipeMonth").addEventListener("click", clearThisMonth);
-
-  window.addEventListener("online", async ()=>{
-    if(state.pendingLocal > 0) await syncPushIfConfigured();
-  });
-}
-
-/* ---------- Boot ---------- */
-(async function init(){
-  try{ await DB.init(); } catch(e){ /* ignore */ }
-  await loadState();
-  wire();
-  hydrateUI();
-
-  await syncPullOnOpen();
-
-  if(state.pendingLocal > 0) await syncPushIfConfigured();
-
-  toast("Ready");
-})();
 </script>
+
 </body>
 </html>
