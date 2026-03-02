@@ -1009,12 +1009,30 @@ function mergeTxKeepNewest(localTx, remoteTx){
   return [...map.values()];
 }
 
+/* ==========================================================
+   JSONP (NO-CORS) SYNC IMPLEMENTATION
+   - Replaces fetch-based driveGet/drivePost
+   ========================================================== */
+function jsonp(url){
+  return new Promise((resolve, reject)=>{
+    const cb = "cb_" + Math.random().toString(16).slice(2);
+    const s = document.createElement("script");
+    const cleanup = ()=>{
+      try{ delete window[cb]; }catch{}
+      s.remove();
+    };
+    window[cb] = (data)=>{ cleanup(); resolve(data); };
+    s.onerror = ()=>{ cleanup(); reject(new Error("jsonp_failed")); };
+    s.src = url + (url.includes("?") ? "&" : "?") + "callback=" + cb + "&_=" + Date.now();
+    document.head.appendChild(s);
+  });
+}
+
 async function driveGet(){
   const url = state.drive.url.trim();
   const key = state.drive.key.trim();
   const u = url + (url.includes("?") ? "&" : "?") + "key=" + encodeURIComponent(key);
-  const res = await fetch(u, { method:"GET", cache:"no-store" });
-  const json = await res.json();
+  const json = await jsonp(u);
   if(!json.ok) throw new Error(json.error || "Drive GET failed");
   return json.data || {};
 }
@@ -1022,15 +1040,20 @@ async function driveGet(){
 async function drivePost(data){
   const url = state.drive.url.trim();
   const key = state.drive.key.trim();
-  const res = await fetch(url, {
-    method:"POST",
-    headers: { "Content-Type":"text/plain;charset=utf-8" },
-    body: JSON.stringify({ key, data })
-  });
-  const json = await res.json();
+
+  // JSONP-friendly "post via get"
+  const payloadObj = { key, data };
+  const payload = encodeURIComponent(JSON.stringify(payloadObj));
+  const u = url + (url.includes("?") ? "&" : "?") +
+            "key=" + encodeURIComponent(key) +
+            "&action=post" +
+            "&payload=" + payload;
+
+  const json = await jsonp(u);
   if(!json.ok) throw new Error(json.error || "Drive POST failed");
   return json;
 }
+/* ========================================================== */
 
 async function syncPullOnOpen(){
   if(!isDriveConfigured()){ setSyncStatus("wait","Not configured"); return; }
@@ -1116,7 +1139,6 @@ async function syncPushIfConfigured(){
 }
 
 async function syncNow(){
-  // hardcoded => always configured
   await syncPullOnOpen();
   if(state.pendingLocal > 0) await syncPushIfConfigured();
   toast("Sync done");
