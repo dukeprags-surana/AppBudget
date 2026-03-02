@@ -122,6 +122,9 @@
   .dotOk{background:var(--good)}
   .dotBad{background:var(--bad)}
   .dotWait{background:#f5b400}
+
+  /* locked fields visual */
+  input[readonly]{background:#f7faff}
 </style>
 <link rel="icon" href="data:,">
 </head>
@@ -407,7 +410,7 @@
       </div>
 
       <div class="muted" style="margin-top:10px">
-        Put the same Apps Script URL + Sync Key on both devices.
+        Same backend sync for both devices (hardcoded in this file).
       </div>
     </aside>
   </div>
@@ -424,6 +427,11 @@
    - Push+merge after changes (debounced)
    ========================================================== */
 
+/* ===== HARD-CODED DRIVE DETAILS (YOUR VALUES) ===== */
+const HARD_DRIVE_URL = "https://script.google.com/macros/s/AKfycbyMqF3TclsaIenpgArcZxTayhNLTSZL1wXeBlP0AiUOnl3500JoWY8yFdAr1kkOIpwX/exec";
+const HARD_SYNC_KEY  = "MOMOSVADAPAV";
+/* ================================================= */
+
 const APP_KEY = "couples_money_tracker_drive_v1";
 
 const DEFAULTS = {
@@ -437,8 +445,8 @@ const DEFAULTS = {
     "Car (Insurance/Tax/Service)","Shopping","Subscriptions","Health","Phone/Internet",
     "Entertainment","Travel","Gifts","Debt repayment","Savings/Investing","Other"
   ],
-  // drive sync config
-  drive: { url:"", key:"" },
+  // drive sync config (HARD-CODED)
+  drive: { url: HARD_DRIVE_URL, key: HARD_SYNC_KEY },
   lastSync: 0,
   pendingLocal: 0,
   tx: [],
@@ -805,9 +813,15 @@ function renderTransactions(){
     });
   });
 }
+
 function renderSettingsPanel(){
-  $("sDriveUrl").value = state.drive?.url || "";
-  $("sDriveKey").value = state.drive?.key || "";
+  // ALWAYS show hardcoded values, locked
+  $("sDriveUrl").value = HARD_DRIVE_URL;
+  $("sDriveKey").value = HARD_SYNC_KEY;
+
+  // lock them to avoid overwriting
+  $("sDriveUrl").readOnly = true;
+  $("sDriveKey").readOnly = true;
 
   $("sYou").value = state.you;
   $("sPartner").value = state.partner;
@@ -819,8 +833,10 @@ function renderSettingsPanel(){
   $("lastSync").textContent = fmtTime(state.lastSync);
   $("pendingCount").textContent = String(state.pendingLocal || 0);
 
-  if(!isDriveConfigured()) setSyncStatus("wait","Not configured");
+  // since it's hardcoded, it is configured
+  setSyncStatus("wait","Configured (hardcoded)");
 }
+
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, m=>({
     "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
@@ -876,6 +892,7 @@ async function addOrUpdate(){
   clearForm(false);
   renderQuick();
 }
+
 function clearForm(resetEdit=true){
   $("fDate").value = new Date().toISOString().slice(0,10);
   $("fType").value = "expense";
@@ -900,6 +917,7 @@ function download(filename, text, mime="text/plain"){
   a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
 }
+
 function exportCSV(){
   const tx = getFilteredTx({type:"all",cat:"all"});
   const rows = [["Date","Month","Type","Category","Amount","PaidBy","Account","Note","UpdatedAt"]];
@@ -914,6 +932,7 @@ function exportCSV(){
   download(`transactions_${state.selectedMonth}.csv`, csv, "text/csv");
   toast("CSV exported");
 }
+
 function exportJSON(){
   const pack = {
     version: 1,
@@ -924,6 +943,7 @@ function exportJSON(){
   download(`money_backup_${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(pack,null,2), "application/json");
   toast("JSON exported");
 }
+
 async function importJSONFile(file){
   const text = await file.text();
   let pack;
@@ -948,6 +968,7 @@ async function importJSONFile(file){
   await syncPushIfConfigured();
   toast("Imported & merged");
 }
+
 function mergeList(a,b){
   const out = [...(a||[])];
   for(const x of (b||[])){
@@ -961,6 +982,7 @@ function isDriveConfigured(){
   const d = state.drive || {};
   return String(d.url||"").startsWith("https://") && String(d.key||"").trim().length >= 6;
 }
+
 function buildSettings(){
   return {
     you: state.you,
@@ -971,9 +993,11 @@ function buildSettings(){
     paidBy: state.paidBy
   };
 }
+
 function markPendingChange(){
   state.pendingLocal = (state.pendingLocal || 0) + 1;
 }
+
 function mergeTxKeepNewest(localTx, remoteTx){
   const map = new Map();
   for(const t of (localTx||[])) if(t && t.id) map.set(t.id, t);
@@ -994,6 +1018,7 @@ async function driveGet(){
   if(!json.ok) throw new Error(json.error || "Drive GET failed");
   return json.data || {};
 }
+
 async function drivePost(data){
   const url = state.drive.url.trim();
   const key = state.drive.key.trim();
@@ -1051,21 +1076,16 @@ async function syncPushIfConfigured(){
         const mergedTx = mergeTxKeepNewest(state.tx, remoteTx);
 
         const remoteSettings = remote.settings || {};
-        const mergedSettings = {
-          ...remoteSettings,
-          ...buildSettings()
-        };
+        const mergedSettings = { ...remoteSettings, ...buildSettings() };
 
-        const payload = {
-          settings: mergedSettings,
-          tx: mergedTx,
-          updatedAt: Date.now()
-        };
+        const payload = { settings: mergedSettings, tx: mergedTx, updatedAt: Date.now() };
 
         await drivePost(payload);
 
         // apply merged back locally
         state.tx = mergedTx;
+
+        // merge settings back
         const rs = mergedSettings;
         state.you = rs.you || state.you;
         state.partner = rs.partner || state.partner;
@@ -1096,24 +1116,16 @@ async function syncPushIfConfigured(){
 }
 
 async function syncNow(){
-  if(!isDriveConfigured()){
-    toast("Enter Apps Script URL + Sync Key");
-    setSyncStatus("wait","Not configured");
-    return;
-  }
+  // hardcoded => always configured
   await syncPullOnOpen();
   if(state.pendingLocal > 0) await syncPushIfConfigured();
   toast("Sync done");
 }
+
 async function testConnection(){
-  if(!isDriveConfigured()){
-    toast("Enter Apps Script URL + Sync Key");
-    setSyncStatus("wait","Not configured");
-    return;
-  }
   try{
     setSyncStatus("wait","Testing…");
-    await driveGet(); // OK even if empty
+    await driveGet();
     setSyncStatus("ok","Connection OK");
     toast("Connection OK");
   }catch(e){
@@ -1127,11 +1139,10 @@ async function testConnection(){
 function normalizeLines(s){
   return String(s||"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
 }
+
 async function saveSettings(){
-  state.drive = {
-    url: $("sDriveUrl").value.trim(),
-    key: $("sDriveKey").value.trim()
-  };
+  // DO NOT overwrite hardcoded drive config:
+  state.drive = { url: HARD_DRIVE_URL, key: HARD_SYNC_KEY };
 
   state.you = $("sYou").value.trim() || DEFAULTS.you;
   state.partner = $("sPartner").value.trim() || DEFAULTS.partner;
@@ -1152,24 +1163,25 @@ async function saveSettings(){
   fillPersonPicker(); fillMonthPicker(); fillDropdowns();
   renderQuick(); renderTransactions(); renderSummary();
 
-  if(isDriveConfigured()){
-    setSyncStatus("wait","Configured");
-    await syncPullOnOpen();
-    await syncPushIfConfigured();
-  } else {
-    setSyncStatus("wait","Not configured");
-  }
+  setSyncStatus("wait","Configured (hardcoded)");
+  await syncPullOnOpen();
+  await syncPushIfConfigured();
+
   toast("Saved");
 }
+
 async function resetAll(){
   if(!confirm("This will delete ALL transactions and settings on this device. Continue?")) return;
   state = structuredClone(DEFAULTS);
+  // ensure hardcoded config survives reset
+  state.drive = { url: HARD_DRIVE_URL, key: HARD_SYNC_KEY };
   state.selectedMonth = monthKey(new Date());
   state.personFilter = "all";
   await persist();
   hydrateUI();
   toast("Reset complete");
 }
+
 async function clearThisMonth(){
   if(!confirm(`Delete ALL transactions in ${state.selectedMonth}?`)) return;
   state.tx = state.tx.filter(t=>t.month !== state.selectedMonth);
@@ -1203,6 +1215,7 @@ async function seedDemo(){
 
 /* ---------- Persist / Load ---------- */
 async function persist(){ await DB.set("state", state); }
+
 async function loadState(){
   const saved = await DB.get("state");
   if(saved && typeof saved === "object"){
@@ -1215,6 +1228,9 @@ async function loadState(){
   } else {
     state = structuredClone(DEFAULTS);
   }
+  // enforce hardcoded config always
+  state.drive = { url: HARD_DRIVE_URL, key: HARD_SYNC_KEY };
+
   if(!state.selectedMonth) state.selectedMonth = monthKey(new Date());
   if(!state.personFilter) state.personFilter = "all";
 }
@@ -1226,8 +1242,7 @@ function hydrateUI(){
   fillDropdowns();
   clearForm(true);
   renderQuick();
-  if(isDriveConfigured()) setSyncStatus("wait","Configured");
-  else setSyncStatus("wait","Not configured");
+  setSyncStatus("wait","Configured (hardcoded)");
 }
 
 /* ---------- Events ---------- */
